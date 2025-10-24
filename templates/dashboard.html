@@ -52,14 +52,31 @@
         
         <!-- Filters -->
         <div class="row mb-4">
-            <div class="col-md-6">
-                <label for="monthFilter" class="form-label">Filter by Month:</label>
+            <div class="col-md-4">
+                <label for="repoFilter" class="form-label">
+                    <i class="fab fa-github me-1"></i>Repository:
+                </label>
+                <select id="repoFilter" class="form-select">
+                    <option value="rakeshreddyperam/testing">rakeshreddyperam/testing</option>
+                    <option value="microsoft/vscode">microsoft/vscode</option>
+                    <option value="facebook/react">facebook/react</option>
+                    <option value="nodejs/node">nodejs/node</option>
+                    <option value="python/cpython">python/cpython</option>
+                    <option value="kubernetes/kubernetes">kubernetes/kubernetes</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="monthFilter" class="form-label">
+                    <i class="fas fa-calendar me-1"></i>Filter by Month:
+                </label>
                 <select id="monthFilter" class="form-select">
                     <option value="">All Months</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <label for="labelFilter" class="form-label">Filter by Labels (comma-separated):</label>
+            <div class="col-md-4">
+                <label for="labelFilter" class="form-label">
+                    <i class="fas fa-tags me-1"></i>Filter by Labels:
+                </label>
                 <input type="text" id="labelFilter" class="form-control" placeholder="e.g., bug, feature, enhancement">
             </div>
         </div>
@@ -129,6 +146,7 @@
     <script>
         let currentMonth = '';
         let currentLabels = [];
+        let currentRepo = 'rakeshreddyperam/testing';
         
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -136,6 +154,12 @@
             loadStats();
             
             // Event listeners
+            document.getElementById('repoFilter').addEventListener('change', function() {
+                currentRepo = this.value;
+                loadAvailableMonths();
+                loadStats();
+            });
+            
             document.getElementById('monthFilter').addEventListener('change', function() {
                 currentMonth = this.value;
                 loadStats();
@@ -156,7 +180,10 @@
         });
         
         function loadAvailableMonths() {
-            fetch('/api/available-months')
+            const params = new URLSearchParams();
+            if (currentRepo) params.append('repo', currentRepo);
+            
+            fetch(`/api/available-months?${params}`)
                 .then(response => response.json())
                 .then(months => {
                     const select = document.getElementById('monthFilter');
@@ -179,6 +206,7 @@
             
             const params = new URLSearchParams();
             if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
             currentLabels.forEach(label => params.append('labels', label));
             
             fetch(`/api/pr-stats?${params}`)
@@ -230,6 +258,7 @@
             // Fetch PR details
             const params = new URLSearchParams({ type });
             if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
                 currentLabels.forEach(label => params.append('labels', label));
             }

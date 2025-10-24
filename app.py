@@ -177,11 +177,15 @@ def pr_stats():
     """API endpoint to get PR statistics"""
     month = request.args.get('month')
     labels = request.args.getlist('labels')
+    repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
     
-    print(f"DEBUG: Getting PR stats for month={month}, labels={labels}")
+    print(f"DEBUG: Getting PR stats for repo={repo}, month={month}, labels={labels}")
+    
+    # Create GitHub service for the requested repository
+    current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
     
     # Get all PRs
-    all_prs = github_service.get_pull_requests(month=month)
+    all_prs = current_service.get_pull_requests(month=month)
     print(f"DEBUG: Got {len(all_prs)} total PRs")
     
     # Get open PRs
@@ -193,7 +197,7 @@ def pr_stats():
     print(f"DEBUG: Found {len(closed_prs)} closed PRs")
     
     # Get PRs with specific labels
-    labeled_prs = github_service.get_pull_requests(labels=labels, month=month) if labels else []
+    labeled_prs = current_service.get_pull_requests(labels=labels, month=month) if labels else []
     print(f"DEBUG: Found {len(labeled_prs)} labeled PRs")
     
     stats = {
@@ -212,11 +216,15 @@ def get_prs():
     pr_type = request.args.get('type', 'open')
     month = request.args.get('month')
     labels = request.args.getlist('labels')
+    repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+    
+    # Create GitHub service for the requested repository
+    current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
     
     if pr_type == 'labeled':
-        prs = github_service.get_pull_requests(labels=labels, month=month)
+        prs = current_service.get_pull_requests(labels=labels, month=month)
     else:
-        prs = github_service.get_pull_requests(state=pr_type, month=month)
+        prs = current_service.get_pull_requests(state=pr_type, month=month)
     
     # Format PR data for frontend
     formatted_prs = []
@@ -238,7 +246,12 @@ def get_prs():
 def available_months():
     """Get available months from PRs"""
     try:
-        prs = github_service.get_pull_requests()
+        repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        prs = current_service.get_pull_requests()
         months = set()
         
         for pr in prs:
