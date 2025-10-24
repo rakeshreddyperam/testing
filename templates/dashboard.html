@@ -38,6 +38,29 @@
             font-size: 0.75rem;
             margin: 2px;
         }
+        
+        /* Enhanced Loading Animations */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
+        .card-body.loading-state {
+            position: relative;
+            opacity: 0.8;
+        }
+        
+        .loading-skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -196,12 +219,39 @@
         }
         
         function showLoading(show) {
+            // Enhanced loading with better visual feedback
+            const cards = document.querySelectorAll('.stat-card .card-body');
+            
+            cards.forEach(cardBody => {
+                if (show) {
+                    cardBody.classList.add('loading-state');
+                    // Add a pulse animation to the card
+                    cardBody.style.animation = 'pulse 1.5s ease-in-out infinite';
+                } else {
+                    cardBody.classList.remove('loading-state');
+                    cardBody.style.animation = 'none';
+                }
+            });
+            
+            // Individual card loaders (legacy support)
             document.querySelectorAll('.loading').forEach(loader => {
                 loader.style.display = show ? 'block' : 'none';
             });
             document.querySelectorAll('.card-title').forEach(title => {
                 title.style.display = show ? 'none' : 'block';
             });
+            
+            // Update filter button states during loading
+            const filterBtn = document.getElementById('applyFilters');
+            if (filterBtn) {
+                if (show) {
+                    filterBtn.disabled = true;
+                    filterBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+                } else {
+                    filterBtn.disabled = false;
+                    filterBtn.innerHTML = 'Apply Filters';
+                }
+            }
         }
         
         function showPRDetails(type) {
