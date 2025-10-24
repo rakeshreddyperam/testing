@@ -40,12 +40,19 @@ class GitHubService:
             
             print(f"DEBUG: Response status: {response.status_code}")
             
-            # Check if we hit rate limit or auth issues
+            # Enhanced error handling for different HTTP status codes
             if response.status_code == 403:
-                print("Rate limit exceeded or authentication required. Using mock data.")
+                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                if 'rate limit' in error_data.get('message', '').lower():
+                    print("Rate limit exceeded. Consider using a personal access token for higher limits.")
+                else:
+                    print("Authentication required or insufficient permissions. Check your GitHub token.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code == 404:
-                print(f"Repository '{self.repo}' not found. Using mock data.")
+                print(f"Repository '{self.repo}' not found or you don't have access. Check repository name and permissions.")
+                return self._get_mock_data(state, labels, month)
+            elif response.status_code == 401:
+                print("Invalid GitHub token. Please check your GITHUB_TOKEN environment variable.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code != 200:
                 print(f"API error {response.status_code}: {response.text}")
