@@ -163,7 +163,7 @@
                 </label>
                 <div class="checkbox-dropdown" id="labelDropdown">
                     <div class="checkbox-dropdown-toggle" id="labelDropdownToggle">
-                        <span id="labelDropdownText">All Labels</span>
+                        <span id="labelDropdownText">No Labels Selected</span>
                     </div>
                     <div class="checkbox-dropdown-menu" id="labelDropdownMenu">
                         <div class="checkbox-dropdown-item">
@@ -295,7 +295,12 @@
         
         function updateLabelDropdownText() {
             const toggle = document.getElementById('labelDropdownText');
+            const menu = document.getElementById('labelDropdownMenu');
+            const allLabelsCheckbox = menu ? menu.querySelector('#label-all') : null;
+            
             if (currentLabels.length === 0) {
+                toggle.textContent = 'No Labels Selected';
+            } else if (allLabelsCheckbox && allLabelsCheckbox.checked && currentLabels.length > 0) {
                 toggle.textContent = 'All Labels';
             } else if (currentLabels.length === 1) {
                 toggle.textContent = currentLabels[0];
@@ -347,9 +352,10 @@
                     // Add "All Labels" option
                     const allItem = document.createElement('div');
                     allItem.className = 'checkbox-dropdown-item';
+                    const allLabelsChecked = currentLabels.length === 0 || currentLabels.length === labels.length;
                     allItem.innerHTML = `
-                        <input type="checkbox" id="label-all" ${currentLabels.length === 0 ? 'checked' : ''}>
-                        <label for="label-all" class="mb-0">All Labels (clear filter)</label>
+                        <input type="checkbox" id="label-all" ${allLabelsChecked ? 'checked' : ''}>
+                        <label for="label-all" class="mb-0">All Labels</label>
                     `;
                     menu.appendChild(allItem);
                     
@@ -378,12 +384,25 @@
                     menu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
                         checkbox.addEventListener('change', function() {
                             if (this.id === 'label-all') {
-                                // Clear all selections
-                                currentLabels = [];
-                                menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                                    cb.checked = cb.id === 'label-all';
-                                    cb.closest('.checkbox-dropdown-item').classList.remove('checked');
-                                });
+                                if (this.checked) {
+                                    // Select all labels
+                                    currentLabels = [...labels]; // Copy all available labels
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = true;
+                                            cb.closest('.checkbox-dropdown-item').classList.add('checked');
+                                        }
+                                    });
+                                } else {
+                                    // Clear all selections
+                                    currentLabels = [];
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = false;
+                                            cb.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                        }
+                                    });
+                                }
                             } else {
                                 // Handle individual label selection
                                 const labelValue = this.value;
@@ -397,13 +416,9 @@
                                     this.closest('.checkbox-dropdown-item').classList.remove('checked');
                                 }
                                 
-                                // Uncheck "All Labels" if any specific label is selected
+                                // Update "All Labels" checkbox based on selection state
                                 const allCheckbox = menu.querySelector('#label-all');
-                                if (currentLabels.length > 0) {
-                                    allCheckbox.checked = false;
-                                } else {
-                                    allCheckbox.checked = true;
-                                }
+                                allCheckbox.checked = currentLabels.length === labels.length;
                             }
                             
                             updateLabelDropdownText();
@@ -419,7 +434,7 @@
                     menu.innerHTML = `
                         <div class="checkbox-dropdown-item">
                             <input type="checkbox" id="label-all" checked>
-                            <label for="label-all" class="mb-0">All Labels (clear filter)</label>
+                            <label for="label-all" class="mb-0">All Labels</label>
                         </div>
                         <hr class="dropdown-divider my-1">
                         <div class="checkbox-dropdown-item">
@@ -444,11 +459,26 @@
                     menu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
                         checkbox.addEventListener('change', function() {
                             if (this.id === 'label-all') {
-                                currentLabels = [];
-                                menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                                    cb.checked = cb.id === 'label-all';
-                                    cb.closest('.checkbox-dropdown-item').classList.remove('checked');
-                                });
+                                const fallbackLabels = ['bug', 'feature', 'enhancement', 'documentation'];
+                                if (this.checked) {
+                                    // Select all labels
+                                    currentLabels = [...fallbackLabels];
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = true;
+                                            cb.closest('.checkbox-dropdown-item').classList.add('checked');
+                                        }
+                                    });
+                                } else {
+                                    // Clear all selections
+                                    currentLabels = [];
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = false;
+                                            cb.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                        }
+                                    });
+                                }
                             } else {
                                 const labelValue = this.value;
                                 if (this.checked) {
@@ -462,11 +492,8 @@
                                 }
                                 
                                 const allCheckbox = menu.querySelector('#label-all');
-                                if (currentLabels.length > 0) {
-                                    allCheckbox.checked = false;
-                                } else {
-                                    allCheckbox.checked = true;
-                                }
+                                const fallbackLabels = ['bug', 'feature', 'enhancement', 'documentation'];
+                                allCheckbox.checked = currentLabels.length === fallbackLabels.length;
                             }
                             
                             updateLabelDropdownText();
