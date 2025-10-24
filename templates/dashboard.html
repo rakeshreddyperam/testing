@@ -38,6 +38,22 @@
             font-size: 0.75rem;
             margin: 2px;
         }
+        
+        /* Multi-select dropdown styling */
+        #labelFilter {
+            min-height: 38px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        
+        #labelFilter option {
+            padding: 4px 8px;
+        }
+        
+        #labelFilter option:checked {
+            background-color: #007bff;
+            color: white;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -52,15 +68,35 @@
         
         <!-- Filters -->
         <div class="row mb-4">
-            <div class="col-md-6">
-                <label for="monthFilter" class="form-label">Filter by Month:</label>
+            <div class="col-md-4">
+                <label for="repoFilter" class="form-label">
+                    <i class="fab fa-github me-1"></i>Repository:
+                </label>
+                <select id="repoFilter" class="form-select">
+                    <option value="rakeshreddyperam/testing">rakeshreddyperam/testing</option>
+                    <option value="microsoft/vscode">microsoft/vscode</option>
+                    <option value="facebook/react">facebook/react</option>
+                    <option value="nodejs/node">nodejs/node</option>
+                    <option value="python/cpython">python/cpython</option>
+                    <option value="kubernetes/kubernetes">kubernetes/kubernetes</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="monthFilter" class="form-label">
+                    <i class="fas fa-calendar me-1"></i>Filter by Month:
+                </label>
                 <select id="monthFilter" class="form-select">
                     <option value="">All Months</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <label for="labelFilter" class="form-label">Filter by Labels (comma-separated):</label>
-                <input type="text" id="labelFilter" class="form-control" placeholder="e.g., bug, feature, enhancement">
+            <div class="col-md-4">
+                <label for="labelFilter" class="form-label">
+                    <i class="fas fa-tags me-1"></i>Filter by Labels:
+                </label>
+                <select id="labelFilter" class="form-select" multiple>
+                    <option value="">Loading labels...</option>
+                </select>
+                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple labels</small>
             </div>
         </div>
         
@@ -129,20 +165,29 @@
     <script>
         let currentMonth = '';
         let currentLabels = [];
+        let currentRepo = 'rakeshreddyperam/testing';
         
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableMonths();
+            loadAvailableLabels();
             loadStats();
             
             // Event listeners
+            document.getElementById('repoFilter').addEventListener('change', function() {
+                currentRepo = this.value;
+                loadAvailableMonths();
+                loadAvailableLabels();
+                loadStats();
+            });
+            
             document.getElementById('monthFilter').addEventListener('change', function() {
                 currentMonth = this.value;
                 loadStats();
             });
             
-            document.getElementById('labelFilter').addEventListener('input', function() {
-                currentLabels = this.value.split(',').map(s => s.trim()).filter(s => s);
+            document.getElementById('labelFilter').addEventListener('change', function() {
+                currentLabels = Array.from(this.selectedOptions).map(option => option.value).filter(v => v);
                 loadStats();
             });
             
@@ -156,7 +201,10 @@
         });
         
         function loadAvailableMonths() {
-            fetch('/api/available-months')
+            const params = new URLSearchParams();
+            if (currentRepo) params.append('repo', currentRepo);
+            
+            fetch(`/api/available-months?${params}`)
                 .then(response => response.json())
                 .then(months => {
                     const select = document.getElementById('monthFilter');
@@ -174,11 +222,51 @@
                 .catch(error => console.error('Error loading months:', error));
         }
         
+        function loadAvailableLabels() {
+            const params = new URLSearchParams();
+            if (currentRepo) params.append('repo', currentRepo);
+            
+            fetch(`/api/available-labels?${params}`)
+                .then(response => response.json())
+                .then(labels => {
+                    const select = document.getElementById('labelFilter');
+                    // Clear existing options
+                    select.innerHTML = '';
+                    
+                    // Add a default "All Labels" option
+                    const defaultOption = document.createElement('option');
+                    defaultOption.value = '';
+                    defaultOption.textContent = 'All Labels (no filter)';
+                    select.appendChild(defaultOption);
+                    
+                    // Add label options
+                    labels.forEach(label => {
+                        const option = document.createElement('option');
+                        option.value = label;
+                        option.textContent = label;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading labels:', error);
+                    // Fallback to basic labels
+                    const select = document.getElementById('labelFilter');
+                    select.innerHTML = `
+                        <option value="">All Labels (no filter)</option>
+                        <option value="bug">bug</option>
+                        <option value="feature">feature</option>
+                        <option value="enhancement">enhancement</option>
+                        <option value="documentation">documentation</option>
+                    `;
+                });
+        }
+        
         function loadStats() {
             showLoading(true);
             
             const params = new URLSearchParams();
             if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
             currentLabels.forEach(label => params.append('labels', label));
             
             fetch(`/api/pr-stats?${params}`)
@@ -230,6 +318,7 @@
             // Fetch PR details
             const params = new URLSearchParams({ type });
             if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
                 currentLabels.forEach(label => params.append('labels', label));
             }
