@@ -244,6 +244,47 @@ def available_months():
         # Return some default months if there's an error
         return jsonify(['2024-10', '2024-09', '2024-08'])
 
+@app.route('/api/search-prs')
+def search_prs():
+    """Advanced PR search with sorting and filtering"""
+    try:
+        search_query = request.args.get('q', '').lower()
+        sort_by = request.args.get('sort', 'created')
+        sort_order = request.args.get('order', 'desc')
+        state = request.args.get('state', 'open')
+        
+        # Get PRs from service
+        prs = github_service.get_pull_requests(state=state if state != 'all' else None)
+        
+        # Search functionality
+        if search_query:
+            filtered_prs = []
+            for pr in prs:
+                if (search_query in pr.get('title', '').lower() or 
+                    search_query in pr.get('user', {}).get('login', '').lower() or 
+                    search_query in str(pr.get('number', ''))):
+                    filtered_prs.append(pr)
+            prs = filtered_prs
+        
+        # Sorting functionality
+        reverse_order = sort_order == 'desc'
+        
+        if sort_by == 'created':
+            prs.sort(key=lambda x: x.get('created_at', ''), reverse=reverse_order)
+        elif sort_by == 'updated':
+            prs.sort(key=lambda x: x.get('updated_at', ''), reverse=reverse_order)
+        elif sort_by == 'title':
+            prs.sort(key=lambda x: x.get('title', '').lower(), reverse=reverse_order)
+        elif sort_by == 'author':
+            prs.sort(key=lambda x: x.get('user', {}).get('login', '').lower(), reverse=reverse_order)
+        elif sort_by == 'number':
+            prs.sort(key=lambda x: x.get('number', 0), reverse=reverse_order)
+        
+        return jsonify(prs)
+    except Exception as e:
+        print(f"Error searching PRs: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/test-mock')
 def test_mock():
     """Test endpoint to force mock data"""
