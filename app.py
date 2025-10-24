@@ -3,7 +3,6 @@ import requests
 import os
 from datetime import datetime
 from dotenv import load_dotenv
-from manual_jira_service import manual_jira_service
 
 load_dotenv()
 
@@ -173,11 +172,6 @@ def dashboard():
     """Main dashboard page"""
     return render_template('dashboard.html')
 
-@app.route('/jira-admin')
-def jira_admin():
-    """Jira ticket management page"""
-    return render_template('jira_admin.html')
-
 @app.route('/api/pr-stats')
 def pr_stats():
     """API endpoint to get PR statistics"""
@@ -301,65 +295,17 @@ def test_mock():
         'sample': mock_data[0] if mock_data else None
     })
 
-@app.route('/api/jira-stats')
-def get_jira_stats():
-    """Get Jira ticket statistics"""
-    try:
-        qat_tickets = manual_jira_service.get_qat_testing_tickets()
-        total_tickets = manual_jira_service.get_all_tickets()
-        
-        return jsonify({
-            'qat_testing_count': len(qat_tickets),
-            'total_count': len(total_tickets)
-        })
-    except Exception as e:
-        print(f"Error getting Jira stats: {e}")
-        return jsonify({'qat_testing_count': 0, 'total_count': 0}), 500
-
-@app.route('/api/jira-tickets')
-def get_jira_tickets():
-    """Get detailed Jira tickets"""
-    try:
-        tickets = manual_jira_service.get_qat_testing_tickets()
-        return jsonify(tickets)
-    except Exception as e:
-        print(f"Error getting Jira tickets: {e}")
-        return jsonify([]), 500
-
-@app.route('/api/jira-add', methods=['POST'])
-def add_jira_ticket():
-    """Add a new Jira ticket manually"""
-    try:
-        data = request.get_json()
-        result = manual_jira_service.add_ticket(
-            key=data.get('key'),
-            summary=data.get('summary'),
-            status=data.get('status', 'QAT-Testing'),
-            assignee=data.get('assignee', 'Unassigned'),
-            priority=data.get('priority', 'Medium')
-        )
-        return jsonify({'success': True, 'message': result})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/jira-sample')
-def add_sample_tickets():
-    """Add sample ZDI tickets for demonstration"""
-    try:
-        result = manual_jira_service.add_sample_tickets()
-        return jsonify({'success': True, 'message': result})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/jira-test')
-def test_jira_connection():
-    """Test Jira connection - for manual service, just return status"""
-    ticket_count = len(manual_jira_service.get_all_tickets())
-    return jsonify({
-        'success': True,
-        'message': f'Manual Jira service active with {ticket_count} tickets',
-        'using_manual': True
-    })
-
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Get port from environment variable or default to 5000
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Check if running in production
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    
+    if debug_mode:
+        # Development mode - accessible on local network
+        # Your team can access at: http://10.95.93.105:5000
+        app.run(debug=True, host='0.0.0.0', port=port)
+    else:
+        # Production mode
+        app.run(debug=False, host='0.0.0.0', port=port)

@@ -19,7 +19,6 @@
         .stat-card.available { border-left-color: #28a745; }
         .stat-card.labeled { border-left-color: #007bff; }
         .stat-card.closed { border-left-color: #6c757d; }
-        .stat-card.jira { border-left-color: #ffc107; }
         
         .loading {
             display: none;
@@ -132,11 +131,6 @@
                 <h1 class="text-center">
                     <i class="fab fa-github"></i> GitHub PR Dashboard
                 </h1>
-                <div class="text-center mt-2">
-                    <a href="/jira-admin" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-cogs"></i> Manage Jira Tickets
-                    </a>
-                </div>
             </div>
         </div>
         
@@ -224,22 +218,6 @@
             </div>
         </div>
         
-        <!-- Jira Statistics Card -->
-        <div class="row mb-4">
-            <div class="col-md-6 mx-auto">
-                <div class="card stat-card jira h-100" data-type="jira-qat">
-                    <div class="card-body text-center">
-                        <i class="fas fa-bug fa-3x text-warning mb-3"></i>
-                        <h2 class="card-title text-warning" id="jiraQatCount">-</h2>
-                        <p class="card-text">Jira Tickets in QAT-Testing</p>
-                        <div class="loading">
-                            <div class="spinner-border text-warning" role="status"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <!-- PR Details Modal -->
         <div class="modal fade" id="prModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -252,24 +230,6 @@
                         <div class="text-center">
                             <div class="spinner-border" role="status"></div>
                             <p>Loading PRs...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Jira Details Modal -->
-        <div class="modal fade" id="jiraModal" tabindex="-1">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="jiraModalTitle">Jira Tickets in QAT-Testing</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body" id="jiraModalBody">
-                        <div class="text-center">
-                            <div class="spinner-border" role="status"></div>
-                            <p>Loading Jira tickets...</p>
                         </div>
                     </div>
                 </div>
@@ -288,7 +248,6 @@
             loadAvailableMonths();
             loadAvailableLabels();
             loadStats();
-            loadJiraStats();
             initializeLabelDropdown();
             
             // Event listeners
@@ -308,11 +267,7 @@
             document.querySelectorAll('.stat-card').forEach(card => {
                 card.addEventListener('click', function() {
                     const type = this.dataset.type;
-                    if (type === 'jira-qat') {
-                        showJiraDetails();
-                    } else {
-                        showPRDetails(type);
-                    }
+                    showPRDetails(type);
                 });
             });
         });
@@ -652,84 +607,6 @@
                 .catch(error => {
                     console.error('Error loading PR details:', error);
                     modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
-                });
-        }
-        
-        function loadJiraStats() {
-            // Load Jira stats from API
-            fetch('/api/jira-stats')
-                .then(response => response.json())
-                .then(stats => {
-                    document.getElementById('jiraQatCount').textContent = stats.qat_testing_count;
-                })
-                .catch(error => {
-                    console.error('Error loading Jira stats:', error);
-                    // Fallback to mock data
-                    const mockJiraCount = Math.floor(Math.random() * 15) + 5;
-                    document.getElementById('jiraQatCount').textContent = mockJiraCount;
-                });
-        }
-        
-        function showJiraDetails() {
-            const modal = new bootstrap.Modal(document.getElementById('jiraModal'));
-            const modalBody = document.getElementById('jiraModalBody');
-            
-            // Show loading
-            modalBody.innerHTML = `
-                <div class="text-center">
-                    <div class="spinner-border" role="status"></div>
-                    <p>Loading Jira tickets...</p>
-                </div>
-            `;
-            
-            modal.show();
-            
-            // Fetch Jira tickets from API
-            fetch('/api/jira-tickets')
-                .then(response => response.json())
-                .then(tickets => {
-                    if (tickets.length === 0) {
-                        modalBody.innerHTML = '<p class="text-center text-muted">No Jira tickets found in QAT-Testing status.</p>';
-                        return;
-                    }
-                    
-                    let html = '';
-                    tickets.forEach(ticket => {
-                        const createdDate = new Date(ticket.created).toLocaleDateString();
-                        const priorityColor = {
-                            'Critical': 'danger',
-                            'High': 'warning',
-                            'Medium': 'primary',
-                            'Low': 'secondary'
-                        }[ticket.priority] || 'secondary';
-                        
-                        html += `
-                            <div class="jira-item border-start border-warning border-3 mb-3 p-3 bg-light">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div class="flex-grow-1">
-                                        <h6 class="mb-1">
-                                            <a href="${ticket.link}" target="_blank" class="text-decoration-none">
-                                                ${ticket.key}: ${ticket.summary}
-                                            </a>
-                                        </h6>
-                                        <small class="text-muted">
-                                            Assignee: ${ticket.assignee} • Created: ${createdDate}
-                                        </small>
-                                        <div class="mt-2">
-                                            <span class="badge bg-warning text-dark me-2">${ticket.status}</span>
-                                            <span class="badge bg-${priorityColor}">${ticket.priority}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    });
-                    
-                    modalBody.innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error loading Jira tickets:', error);
-                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading Jira tickets.</p>';
                 });
         }
     </script>
