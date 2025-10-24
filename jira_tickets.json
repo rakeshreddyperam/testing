@@ -1,0 +1,52 @@
+[
+  {
+    "key": "ZDI-001",
+    "summary": "Fix user authentication bug in login module",
+    "status": "QAT-Testing",
+    "assignee": "John Smith",
+    "priority": "High",
+    "created": "2025-10-24T10:58:03.526129",
+    "link": "https://onezelis.atlassian.net/browse/ZDI-001",
+    "source": "Manual Entry"
+  },
+  {
+    "key": "ZDI-002",
+    "summary": "Update dashboard performance metrics",
+    "status": "QAT-Testing",
+    "assignee": "Sarah Johnson",
+    "priority": "Medium",
+    "created": "2025-10-24T10:58:03.526129",
+    "link": "https://onezelis.atlassian.net/browse/ZDI-002",
+    "source": "Manual Entry"
+  },
+  {
+    "key": "ZDI-003",
+    "summary": "Implement new search functionality",
+    "status": "QAT-Testing",
+    "assignee": "Mike Davis",
+    "priority": "Low",
+    "created": "2025-10-24T10:58:03.526129",
+    "link": "https://onezelis.atlassian.net/browse/ZDI-003",
+    "source": "Manual Entry"
+  },
+  {
+    "key": "ZDI-004",
+    "summary": "Database connection timeout issue",
+    "status": "QAT-Testing",
+    "assignee": "Lisa Wilson",
+    "priority": "Critical",
+    "created": "2025-10-24T10:58:03.526129",
+    "link": "https://onezelis.atlassian.net/browse/ZDI-004",
+    "source": "Manual Entry"
+  },
+  {
+    "key": "ZDI-005",
+    "summary": "Email notification system enhancement",
+    "status": "In Progress",
+    "assignee": "Tom Brown",
+    "priority": "Medium",
+    "created": "2025-10-24T10:58:03.526129",
+    "link": "https://onezelis.atlassian.net/browse/ZDI-005",
+    "source": "Manual Entry"
+  }
+]
