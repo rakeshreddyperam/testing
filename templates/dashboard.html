@@ -38,6 +38,22 @@
             font-size: 0.75rem;
             margin: 2px;
         }
+        
+        /* Multi-select dropdown styling */
+        #labelFilter {
+            min-height: 38px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        
+        #labelFilter option {
+            padding: 4px 8px;
+        }
+        
+        #labelFilter option:checked {
+            background-color: #007bff;
+            color: white;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -77,7 +93,10 @@
                 <label for="labelFilter" class="form-label">
                     <i class="fas fa-tags me-1"></i>Filter by Labels:
                 </label>
-                <input type="text" id="labelFilter" class="form-control" placeholder="e.g., bug, feature, enhancement">
+                <select id="labelFilter" class="form-select" multiple>
+                    <option value="">Loading labels...</option>
+                </select>
+                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple labels</small>
             </div>
         </div>
         
@@ -151,12 +170,14 @@
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableMonths();
+            loadAvailableLabels();
             loadStats();
             
             // Event listeners
             document.getElementById('repoFilter').addEventListener('change', function() {
                 currentRepo = this.value;
                 loadAvailableMonths();
+                loadAvailableLabels();
                 loadStats();
             });
             
@@ -165,8 +186,8 @@
                 loadStats();
             });
             
-            document.getElementById('labelFilter').addEventListener('input', function() {
-                currentLabels = this.value.split(',').map(s => s.trim()).filter(s => s);
+            document.getElementById('labelFilter').addEventListener('change', function() {
+                currentLabels = Array.from(this.selectedOptions).map(option => option.value).filter(v => v);
                 loadStats();
             });
             
@@ -199,6 +220,45 @@
                     });
                 })
                 .catch(error => console.error('Error loading months:', error));
+        }
+        
+        function loadAvailableLabels() {
+            const params = new URLSearchParams();
+            if (currentRepo) params.append('repo', currentRepo);
+            
+            fetch(`/api/available-labels?${params}`)
+                .then(response => response.json())
+                .then(labels => {
+                    const select = document.getElementById('labelFilter');
+                    // Clear existing options
+                    select.innerHTML = '';
+                    
+                    // Add a default "All Labels" option
+                    const defaultOption = document.createElement('option');
+                    defaultOption.value = '';
+                    defaultOption.textContent = 'All Labels (no filter)';
+                    select.appendChild(defaultOption);
+                    
+                    // Add label options
+                    labels.forEach(label => {
+                        const option = document.createElement('option');
+                        option.value = label;
+                        option.textContent = label;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading labels:', error);
+                    // Fallback to basic labels
+                    const select = document.getElementById('labelFilter');
+                    select.innerHTML = `
+                        <option value="">All Labels (no filter)</option>
+                        <option value="bug">bug</option>
+                        <option value="feature">feature</option>
+                        <option value="enhancement">enhancement</option>
+                        <option value="documentation">documentation</option>
+                    `;
+                });
         }
         
         function loadStats() {

@@ -264,6 +264,28 @@ def available_months():
         # Return some default months if there's an error
         return jsonify(['2024-10', '2024-09', '2024-08'])
 
+@app.route('/api/available-labels')
+def available_labels():
+    """Get available labels from PRs"""
+    try:
+        repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        prs = current_service.get_pull_requests()
+        labels = set()
+        
+        for pr in prs:
+            for label in pr.get('labels', []):
+                labels.add(label['name'])
+        
+        return jsonify(sorted(list(labels)))
+    except Exception as e:
+        print(f"Error getting available labels: {e}")
+        # Return some default labels if there's an error
+        return jsonify(['bug', 'feature', 'enhancement', 'documentation', 'performance'])
+
 @app.route('/api/test-mock')
 def test_mock():
     """Test endpoint to force mock data"""
