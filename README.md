@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # GitHub PR Dashboard
 
 A Python Flask web application for monitoring GitHub Pull Requests with interactive dashboard cards and filtering capabilities.
@@ -174,3 +175,6 @@ http://localhost:5000
 ## License
 
 This project is for demonstration purposes. Please ensure compliance with GitHub's API terms of service.
+=======
+# testing
+>>>>>>> 2e757797419a55de53922c3967321397240bd3d7
