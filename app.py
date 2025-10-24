@@ -3,6 +3,7 @@ import requests
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from jira_service import jira_service
 
 load_dotenv()
 
@@ -293,6 +294,40 @@ def test_mock():
     return jsonify({
         'count': len(mock_data),
         'sample': mock_data[0] if mock_data else None
+    })
+
+@app.route('/api/jira-stats')
+def get_jira_stats():
+    """Get Jira ticket statistics"""
+    try:
+        qat_count = jira_service.get_ticket_count_by_status('QAT-Testing')
+        
+        return jsonify({
+            'qat_testing_count': qat_count,
+            'total_count': qat_count  # Can be expanded to include other statuses
+        })
+    except Exception as e:
+        print(f"Error getting Jira stats: {e}")
+        return jsonify({'qat_testing_count': 0, 'total_count': 0}), 500
+
+@app.route('/api/jira-tickets')
+def get_jira_tickets():
+    """Get detailed Jira tickets"""
+    try:
+        tickets = jira_service.get_tickets_in_status('QAT-Testing')
+        return jsonify(tickets)
+    except Exception as e:
+        print(f"Error getting Jira tickets: {e}")
+        return jsonify([]), 500
+
+@app.route('/api/jira-test')
+def test_jira_connection():
+    """Test Jira connection"""
+    success, message = jira_service.test_connection()
+    return jsonify({
+        'success': success,
+        'message': message,
+        'using_mock': jira_service.use_mock
     })
 
 if __name__ == '__main__':
