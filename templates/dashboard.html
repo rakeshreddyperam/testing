@@ -39,20 +39,88 @@
             margin: 2px;
         }
         
-        /* Multi-select dropdown styling */
-        #labelFilter {
-            min-height: 38px;
-            max-height: 120px;
+        /* Checkbox dropdown styling */
+        .checkbox-dropdown {
+            position: relative;
+            display: block;
+        }
+        
+        .checkbox-dropdown-toggle {
+            width: 100%;
+            padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: #212529;
+            background-color: #fff;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m1 6 7 7 7-7'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        
+        .checkbox-dropdown-toggle:hover,
+        .checkbox-dropdown-toggle:focus {
+            border-color: #86b7fe;
+            outline: 0;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .checkbox-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            display: none;
+            min-width: 100%;
+            max-height: 250px;
             overflow-y: auto;
+            margin: 0.125rem 0 0;
+            font-size: 1rem;
+            color: #212529;
+            text-align: left;
+            background-color: #fff;
+            background-clip: padding-box;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
         }
         
-        #labelFilter option {
-            padding: 4px 8px;
+        .checkbox-dropdown-menu.show {
+            display: block;
         }
         
-        #labelFilter option:checked {
-            background-color: #007bff;
-            color: white;
+        .checkbox-dropdown-item {
+            position: relative;
+            display: block;
+            width: 100%;
+            padding: 0.375rem 0.75rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+            cursor: pointer;
+        }
+        
+        .checkbox-dropdown-item:hover,
+        .checkbox-dropdown-item:focus {
+            background-color: #e9ecef;
+        }
+        
+        .checkbox-dropdown-item input[type="checkbox"] {
+            margin-right: 0.5rem;
+        }
+        
+        .checkbox-dropdown-item.checked {
+            background-color: #e7f1ff;
+            color: #0a58ca;
         }
     </style>
 </head>
@@ -93,10 +161,18 @@
                 <label for="labelFilter" class="form-label">
                     <i class="fas fa-tags me-1"></i>Filter by Labels:
                 </label>
-                <select id="labelFilter" class="form-select" multiple>
-                    <option value="">Loading labels...</option>
-                </select>
-                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple labels</small>
+                <div class="checkbox-dropdown" id="labelDropdown">
+                    <div class="checkbox-dropdown-toggle" id="labelDropdownToggle">
+                        <span id="labelDropdownText">All Labels</span>
+                    </div>
+                    <div class="checkbox-dropdown-menu" id="labelDropdownMenu">
+                        <div class="checkbox-dropdown-item">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            Loading labels...
+                        </div>
+                    </div>
+                </div>
+                <small class="form-text text-muted">Click to select/deselect labels</small>
             </div>
         </div>
         
@@ -172,6 +248,7 @@
             loadAvailableMonths();
             loadAvailableLabels();
             loadStats();
+            initializeLabelDropdown();
             
             // Event listeners
             document.getElementById('repoFilter').addEventListener('change', function() {
@@ -186,11 +263,6 @@
                 loadStats();
             });
             
-            document.getElementById('labelFilter').addEventListener('change', function() {
-                currentLabels = Array.from(this.selectedOptions).map(option => option.value).filter(v => v);
-                loadStats();
-            });
-            
             // Card click handlers
             document.querySelectorAll('.stat-card').forEach(card => {
                 card.addEventListener('click', function() {
@@ -199,6 +271,38 @@
                 });
             });
         });
+        
+        function initializeLabelDropdown() {
+            const toggle = document.getElementById('labelDropdownToggle');
+            const menu = document.getElementById('labelDropdownMenu');
+            
+            // Toggle dropdown on click
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                menu.classList.toggle('show');
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function() {
+                menu.classList.remove('show');
+            });
+            
+            // Prevent dropdown from closing when clicking inside
+            menu.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
+        
+        function updateLabelDropdownText() {
+            const toggle = document.getElementById('labelDropdownText');
+            if (currentLabels.length === 0) {
+                toggle.textContent = 'All Labels';
+            } else if (currentLabels.length === 1) {
+                toggle.textContent = currentLabels[0];
+            } else {
+                toggle.textContent = `${currentLabels.length} labels selected`;
+            }
+        }
         
         function loadAvailableMonths() {
             const params = new URLSearchParams();
@@ -226,38 +330,149 @@
             const params = new URLSearchParams();
             if (currentRepo) params.append('repo', currentRepo);
             
+            const menu = document.getElementById('labelDropdownMenu');
+            menu.innerHTML = `
+                <div class="checkbox-dropdown-item">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Loading labels...
+                </div>
+            `;
+            
             fetch(`/api/available-labels?${params}`)
                 .then(response => response.json())
                 .then(labels => {
-                    const select = document.getElementById('labelFilter');
-                    // Clear existing options
-                    select.innerHTML = '';
+                    // Clear existing items
+                    menu.innerHTML = '';
                     
-                    // Add a default "All Labels" option
-                    const defaultOption = document.createElement('option');
-                    defaultOption.value = '';
-                    defaultOption.textContent = 'All Labels (no filter)';
-                    select.appendChild(defaultOption);
+                    // Add "All Labels" option
+                    const allItem = document.createElement('div');
+                    allItem.className = 'checkbox-dropdown-item';
+                    allItem.innerHTML = `
+                        <input type="checkbox" id="label-all" ${currentLabels.length === 0 ? 'checked' : ''}>
+                        <label for="label-all" class="mb-0">All Labels (clear filter)</label>
+                    `;
+                    menu.appendChild(allItem);
+                    
+                    // Add separator
+                    const separator = document.createElement('hr');
+                    separator.className = 'dropdown-divider my-1';
+                    menu.appendChild(separator);
                     
                     // Add label options
-                    labels.forEach(label => {
-                        const option = document.createElement('option');
-                        option.value = label;
-                        option.textContent = label;
-                        select.appendChild(option);
+                    labels.forEach((label, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'checkbox-dropdown-item';
+                        const isChecked = currentLabels.includes(label);
+                        if (isChecked) {
+                            item.classList.add('checked');
+                        }
+                        
+                        item.innerHTML = `
+                            <input type="checkbox" id="label-${index}" value="${label}" ${isChecked ? 'checked' : ''}>
+                            <label for="label-${index}" class="mb-0">${label}</label>
+                        `;
+                        menu.appendChild(item);
                     });
+                    
+                    // Add event listeners to checkboxes
+                    menu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                        checkbox.addEventListener('change', function() {
+                            if (this.id === 'label-all') {
+                                // Clear all selections
+                                currentLabels = [];
+                                menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                    cb.checked = cb.id === 'label-all';
+                                    cb.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                });
+                            } else {
+                                // Handle individual label selection
+                                const labelValue = this.value;
+                                if (this.checked) {
+                                    if (!currentLabels.includes(labelValue)) {
+                                        currentLabels.push(labelValue);
+                                    }
+                                    this.closest('.checkbox-dropdown-item').classList.add('checked');
+                                } else {
+                                    currentLabels = currentLabels.filter(l => l !== labelValue);
+                                    this.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                }
+                                
+                                // Uncheck "All Labels" if any specific label is selected
+                                const allCheckbox = menu.querySelector('#label-all');
+                                if (currentLabels.length > 0) {
+                                    allCheckbox.checked = false;
+                                } else {
+                                    allCheckbox.checked = true;
+                                }
+                            }
+                            
+                            updateLabelDropdownText();
+                            loadStats();
+                        });
+                    });
+                    
+                    updateLabelDropdownText();
                 })
                 .catch(error => {
                     console.error('Error loading labels:', error);
                     // Fallback to basic labels
-                    const select = document.getElementById('labelFilter');
-                    select.innerHTML = `
-                        <option value="">All Labels (no filter)</option>
-                        <option value="bug">bug</option>
-                        <option value="feature">feature</option>
-                        <option value="enhancement">enhancement</option>
-                        <option value="documentation">documentation</option>
+                    menu.innerHTML = `
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-all" checked>
+                            <label for="label-all" class="mb-0">All Labels (clear filter)</label>
+                        </div>
+                        <hr class="dropdown-divider my-1">
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-bug" value="bug">
+                            <label for="label-bug" class="mb-0">bug</label>
+                        </div>
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-feature" value="feature">
+                            <label for="label-feature" class="mb-0">feature</label>
+                        </div>
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-enhancement" value="enhancement">
+                            <label for="label-enhancement" class="mb-0">enhancement</label>
+                        </div>
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-documentation" value="documentation">
+                            <label for="label-documentation" class="mb-0">documentation</label>
+                        </div>
                     `;
+                    
+                    // Add event listeners for fallback labels
+                    menu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                        checkbox.addEventListener('change', function() {
+                            if (this.id === 'label-all') {
+                                currentLabels = [];
+                                menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                    cb.checked = cb.id === 'label-all';
+                                    cb.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                });
+                            } else {
+                                const labelValue = this.value;
+                                if (this.checked) {
+                                    if (!currentLabels.includes(labelValue)) {
+                                        currentLabels.push(labelValue);
+                                    }
+                                    this.closest('.checkbox-dropdown-item').classList.add('checked');
+                                } else {
+                                    currentLabels = currentLabels.filter(l => l !== labelValue);
+                                    this.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                }
+                                
+                                const allCheckbox = menu.querySelector('#label-all');
+                                if (currentLabels.length > 0) {
+                                    allCheckbox.checked = false;
+                                } else {
+                                    allCheckbox.checked = true;
+                                }
+                            }
+                            
+                            updateLabelDropdownText();
+                            loadStats();
+                        });
+                    });
                 });
         }
         
