@@ -746,7 +746,8 @@
                     
                     // Add click handlers for reviewers
                     document.querySelectorAll('.reviewer-item').forEach(item => {
-                        item.addEventListener('click', function() {
+                        item.addEventListener('click', function(e) {
+                            e.stopPropagation(); // Prevent event bubbling to stat-card handler
                             const reviewerName = this.dataset.reviewer;
                             showReviewerPRs(reviewerName);
                         });
