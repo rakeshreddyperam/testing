@@ -295,17 +295,126 @@ def test_mock():
         'sample': mock_data[0] if mock_data else None
     })
 
+@app.route('/api/reviewer-stats')
+def get_reviewer_stats():
+    """Get reviewer statistics for open PRs"""
+    try:
+        repo = request.args.get('repo', GITHUB_REPO)
+        month = request.args.get('month')
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        # Get open PRs
+        prs = current_service.get_pull_requests(state='open', month=month)
+        
+        # Count PRs per reviewer
+        reviewer_stats = {}
+        
+        for pr in prs:
+            # Get requested reviewers
+            requested_reviewers = pr.get('requested_reviewers', [])
+            
+            # Also check for review requests from teams (if any)
+            requested_teams = pr.get('requested_teams', [])
+            
+            # Count individual reviewers
+            for reviewer in requested_reviewers:
+                reviewer_login = reviewer['login']
+                if reviewer_login not in reviewer_stats:
+                    reviewer_stats[reviewer_login] = {
+                        'name': reviewer_login,
+                        'avatar_url': reviewer.get('avatar_url', ''),
+                        'count': 0,
+                        'prs': []
+                    }
+                reviewer_stats[reviewer_login]['count'] += 1
+                reviewer_stats[reviewer_login]['prs'].append({
+                    'number': pr['number'],
+                    'title': pr['title'],
+                    'html_url': pr['html_url'],
+                    'created_at': pr['created_at']
+                })
+            
+            # Count team reviewers
+            for team in requested_teams:
+                team_name = f"@{team['name']}"
+                if team_name not in reviewer_stats:
+                    reviewer_stats[team_name] = {
+                        'name': team_name,
+                        'avatar_url': '',
+                        'count': 0,
+                        'prs': []
+                    }
+                reviewer_stats[team_name]['count'] += 1
+                reviewer_stats[team_name]['prs'].append({
+                    'number': pr['number'],
+                    'title': pr['title'],
+                    'html_url': pr['html_url'],
+                    'created_at': pr['created_at']
+                })
+        
+        # Convert to list and sort by count
+        reviewer_list = list(reviewer_stats.values())
+        reviewer_list.sort(key=lambda x: x['count'], reverse=True)
+        
+        return jsonify({
+            'reviewers': reviewer_list,
+            'total_reviewers': len(reviewer_list),
+            'total_pending_reviews': sum(r['count'] for r in reviewer_list)
+        })
+        
+    except Exception as e:
+        print(f"Error getting reviewer stats: {e}")
+        return jsonify({'reviewers': [], 'total_reviewers': 0, 'total_pending_reviews': 0}), 500
+
+@app.route('/api/reviewer-prs')
+def get_reviewer_prs():
+    """Get PRs assigned to a specific reviewer"""
+    try:
+        reviewer = request.args.get('reviewer')
+        repo = request.args.get('repo', GITHUB_REPO)
+        month = request.args.get('month')
+        
+        if not reviewer:
+            return jsonify({'error': 'Reviewer parameter required'}), 400
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        # Get open PRs
+        prs = current_service.get_pull_requests(state='open', month=month)
+        
+        # Filter PRs for the specific reviewer
+        reviewer_prs = []
+        for pr in prs:
+            requested_reviewers = pr.get('requested_reviewers', [])
+            requested_teams = pr.get('requested_teams', [])
+            
+            # Check if reviewer is in requested reviewers
+            is_reviewer = any(r['login'] == reviewer for r in requested_reviewers)
+            
+            # Check if reviewer is a team (starts with @)
+            if reviewer.startswith('@'):
+                team_name = reviewer[1:]  # Remove @ prefix
+                is_reviewer = any(t['name'] == team_name for t in requested_teams)
+            
+            if is_reviewer:
+                reviewer_prs.append({
+                    'number': pr['number'],
+                    'title': pr['title'],
+                    'html_url': pr['html_url'],
+                    'created_at': pr['created_at'],
+                    'updated_at': pr['updated_at'],
+                    'user': pr['user']['login'],
+                    'labels': [label['name'] for label in pr['labels']]
+                })
+        
+        return jsonify(reviewer_prs)
+        
+    except Exception as e:
+        print(f"Error getting reviewer PRs: {e}")
+        return jsonify([]), 500
+
 if __name__ == '__main__':
-    # Get port from environment variable or default to 5000
-    port = int(os.environ.get('PORT', 5000))
-    
-    # Check if running in production
-    debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    
-    if debug_mode:
-        # Development mode - accessible on local network
-        # Your team can access at: http://10.95.93.105:5000
-        app.run(debug=True, host='0.0.0.0', port=port)
-    else:
-        # Production mode
-        app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=5000)
