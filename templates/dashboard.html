@@ -205,6 +205,52 @@
             </div>
         </div>
         
+        <!-- Advanced PR Search and Sort Controls -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-search me-2"></i>Advanced PR Search & Sort
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label for="searchInput" class="form-label">Search PRs</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                    <input type="text" class="form-control" id="searchInput" placeholder="Search by title, author, or PR number">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="sortBy" class="form-label">Sort By</label>
+                                <select class="form-select" id="sortBy">
+                                    <option value="created">Created Date</option>
+                                    <option value="updated">Updated Date</option>
+                                    <option value="title">Title</option>
+                                    <option value="author">Author</option>
+                                    <option value="number">PR Number</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="sortOrder" class="form-label">Order</label>
+                                <select class="form-select" id="sortOrder">
+                                    <option value="desc">Newest First</option>
+                                    <option value="asc">Oldest First</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button class="btn btn-primary" id="searchPRs">
+                                    <i class="fas fa-search me-1"></i>Search
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Statistics Cards -->
         <div class="row mb-4" id="statsRow">
             <div class="col-md-4">
@@ -830,6 +876,97 @@
                     console.error('Error loading reviewer PRs:', error);
                     modalBody.innerHTML = '<p class="text-center text-danger">Error loading PRs for this reviewer.</p>';
                 });
+        }
+
+        // Advanced PR Search Functionality
+        document.getElementById('searchPRs').addEventListener('click', function() {
+            performPRSearch();
+        });
+        
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performPRSearch();
+            }
+        });
+
+        function performPRSearch() {
+            const searchQuery = document.getElementById('searchInput').value;
+            const sortBy = document.getElementById('sortBy').value;
+            const sortOrder = document.getElementById('sortOrder').value;
+            
+            // Show loading
+            const searchBtn = document.getElementById('searchPRs');
+            const originalText = searchBtn.innerHTML;
+            searchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Searching...';
+            searchBtn.disabled = true;
+
+            // Build search parameters
+            const params = new URLSearchParams({
+                q: searchQuery,
+                sort: sortBy,
+                order: sortOrder,
+                state: 'open'
+            });
+            
+            if (currentRepo) params.append('repo', currentRepo);
+
+            fetch(`/api/search-prs?${params}`)
+                .then(response => response.json())
+                .then(prs => {
+                    displaySearchResults(prs);
+                })
+                .catch(error => {
+                    console.error('Error searching PRs:', error);
+                    alert('Error searching pull requests. Please try again.');
+                })
+                .finally(() => {
+                    searchBtn.innerHTML = originalText;
+                    searchBtn.disabled = false;
+                });
+        }
+
+        function displaySearchResults(prs) {
+            const modal = new bootstrap.Modal(document.getElementById('prModal'));
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+            
+            modalTitle.textContent = `Search Results (${prs.length} found)`;
+            
+            if (prs.length === 0) {
+                modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found matching your search criteria.</p>';
+            } else {
+                let html = '';
+                prs.forEach(pr => {
+                    const createdDate = new Date(pr.created_at).toLocaleDateString();
+                    const labels = pr.labels ? pr.labels.map(label =>
+                        `<span class="badge bg-primary label-badge">${label.name}</span>`
+                    ).join('') : '';
+
+                    html += `
+                        <div class="pr-item ${pr.state}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        <a href="${pr.html_url}" target="_blank" class="text-decoration-none">
+                                            #${pr.number} ${pr.title}
+                                        </a>
+                                    </h6>
+                                    <small class="text-muted">
+                                        by ${pr.user.login} • ${createdDate}
+                                    </small>
+                                    ${labels ? `<div class="mt-1">${labels}</div>` : ''}
+                                </div>
+                                <span class="badge bg-${pr.state === 'open' ? 'success' : 'secondary'} ms-2">
+                                    ${pr.state}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                });
+                modalBody.innerHTML = html;
+            }
+
+            modal.show();
         }
     </script>
 </body>
