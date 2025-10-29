@@ -19,6 +19,7 @@
         .stat-card.available { border-left-color: #28a745; }
         .stat-card.labeled { border-left-color: #007bff; }
         .stat-card.closed { border-left-color: #6c757d; }
+        .stat-card.reviewers { border-left-color: #e83e8c; }
         
         .loading {
             display: none;
@@ -38,6 +39,118 @@
             font-size: 0.75rem;
             margin: 2px;
         }
+        
+        .reviewer-item {
+            border-left: 3px solid #e83e8c;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .reviewer-item:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+        
+        .reviewer-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .reviewer-stats {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        /* Checkbox dropdown styling */
+        .checkbox-dropdown {
+            position: relative;
+            display: block;
+        }
+        
+        .checkbox-dropdown-toggle {
+            width: 100%;
+            padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: #212529;
+            background-color: #fff;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m1 6 7 7 7-7'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        
+        .checkbox-dropdown-toggle:hover,
+        .checkbox-dropdown-toggle:focus {
+            border-color: #86b7fe;
+            outline: 0;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .checkbox-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            display: none;
+            min-width: 100%;
+            max-height: 250px;
+            overflow-y: auto;
+            margin: 0.125rem 0 0;
+            font-size: 1rem;
+            color: #212529;
+            text-align: left;
+            background-color: #fff;
+            background-clip: padding-box;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        
+        .checkbox-dropdown-menu.show {
+            display: block;
+        }
+        
+        .checkbox-dropdown-item {
+            position: relative;
+            display: block;
+            width: 100%;
+            padding: 0.375rem 0.75rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+            cursor: pointer;
+        }
+        
+        .checkbox-dropdown-item:hover,
+        .checkbox-dropdown-item:focus {
+            background-color: #e9ecef;
+        }
+        
+        .checkbox-dropdown-item input[type="checkbox"] {
+            margin-right: 0.5rem;
+        }
+        
+        .checkbox-dropdown-item.checked {
+            background-color: #e7f1ff;
+            color: #0a58ca;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -52,15 +165,43 @@
         
         <!-- Filters -->
         <div class="row mb-4">
-            <div class="col-md-6">
-                <label for="monthFilter" class="form-label">Filter by Month:</label>
+            <div class="col-md-4">
+                <label for="repoFilter" class="form-label">
+                    <i class="fab fa-github me-1"></i>Repository:
+                </label>
+                <select id="repoFilter" class="form-select">
+                    <option value="rakeshreddyperam/testing">rakeshreddyperam/testing</option>
+                    <option value="microsoft/vscode">microsoft/vscode</option>
+                    <option value="facebook/react">facebook/react</option>
+                    <option value="nodejs/node">nodejs/node</option>
+                    <option value="python/cpython">python/cpython</option>
+                    <option value="kubernetes/kubernetes">kubernetes/kubernetes</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="monthFilter" class="form-label">
+                    <i class="fas fa-calendar me-1"></i>Filter by Month:
+                </label>
                 <select id="monthFilter" class="form-select">
                     <option value="">All Months</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <label for="labelFilter" class="form-label">Filter by Labels (comma-separated):</label>
-                <input type="text" id="labelFilter" class="form-control" placeholder="e.g., bug, feature, enhancement">
+            <div class="col-md-4">
+                <label for="labelFilter" class="form-label">
+                    <i class="fas fa-tags me-1"></i>Filter by Labels:
+                </label>
+                <div class="checkbox-dropdown" id="labelDropdown">
+                    <div class="checkbox-dropdown-toggle" id="labelDropdownToggle">
+                        <span id="labelDropdownText">No Labels Selected</span>
+                    </div>
+                    <div class="checkbox-dropdown-menu" id="labelDropdownMenu">
+                        <div class="checkbox-dropdown-item">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            Loading labels...
+                        </div>
+                    </div>
+                </div>
+                <small class="form-text text-muted">Click to select/deselect labels</small>
             </div>
         </div>
         
@@ -106,6 +247,27 @@
             </div>
         </div>
         
+        <!-- Reviewers Statistics Card -->
+        <div class="row mb-4">
+            <div class="col-md-8 mx-auto">
+                <div class="card stat-card reviewers h-100" data-type="reviewers">
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <i class="fas fa-users fa-3x text-info mb-2"></i>
+                            <h5 class="card-title text-info">PR Reviewers</h5>
+                            <p class="text-muted">Click on reviewer to see their PRs</p>
+                        </div>
+                        <div id="reviewersList">
+                            <div class="text-center">
+                                <div class="spinner-border text-info" role="status"></div>
+                                <p class="mt-2">Loading reviewers...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- PR Details Modal -->
         <div class="modal fade" id="prModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -123,27 +285,53 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Reviewer PRs Modal -->
+        <div class="modal fade" id="reviewerModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="reviewerModalTitle">Reviewer PRs</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="reviewerModalBody">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status"></div>
+                            <p>Loading reviewer PRs...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentMonth = '';
         let currentLabels = [];
+        let currentRepo = 'rakeshreddyperam/testing';
         
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableMonths();
+            loadAvailableLabels();
             loadStats();
+            loadReviewerStats();
+            initializeLabelDropdown();
             
             // Event listeners
+            document.getElementById('repoFilter').addEventListener('change', function() {
+                currentRepo = this.value;
+                loadAvailableMonths();
+                loadAvailableLabels();
+                loadStats();
+                loadReviewerStats();
+            });
+            
             document.getElementById('monthFilter').addEventListener('change', function() {
                 currentMonth = this.value;
                 loadStats();
-            });
-            
-            document.getElementById('labelFilter').addEventListener('input', function() {
-                currentLabels = this.value.split(',').map(s => s.trim()).filter(s => s);
-                loadStats();
+                loadReviewerStats();
             });
             
             // Card click handlers
@@ -155,8 +343,48 @@
             });
         });
         
+        function initializeLabelDropdown() {
+            const toggle = document.getElementById('labelDropdownToggle');
+            const menu = document.getElementById('labelDropdownMenu');
+            
+            // Toggle dropdown on click
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                menu.classList.toggle('show');
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function() {
+                menu.classList.remove('show');
+            });
+            
+            // Prevent dropdown from closing when clicking inside
+            menu.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
+        
+        function updateLabelDropdownText() {
+            const toggle = document.getElementById('labelDropdownText');
+            const menu = document.getElementById('labelDropdownMenu');
+            const allLabelsCheckbox = menu ? menu.querySelector('#label-all') : null;
+            
+            if (currentLabels.length === 0) {
+                toggle.textContent = 'No Labels Selected';
+            } else if (allLabelsCheckbox && allLabelsCheckbox.checked && currentLabels.length > 0) {
+                toggle.textContent = 'All Labels';
+            } else if (currentLabels.length === 1) {
+                toggle.textContent = currentLabels[0];
+            } else {
+                toggle.textContent = `${currentLabels.length} labels selected`;
+            }
+        }
+        
         function loadAvailableMonths() {
-            fetch('/api/available-months')
+            const params = new URLSearchParams();
+            if (currentRepo) params.append('repo', currentRepo);
+            
+            fetch(`/api/available-months?${params}`)
                 .then(response => response.json())
                 .then(months => {
                     const select = document.getElementById('monthFilter');
@@ -174,11 +402,184 @@
                 .catch(error => console.error('Error loading months:', error));
         }
         
+        function loadAvailableLabels() {
+            const params = new URLSearchParams();
+            if (currentRepo) params.append('repo', currentRepo);
+            
+            const menu = document.getElementById('labelDropdownMenu');
+            menu.innerHTML = `
+                <div class="checkbox-dropdown-item">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Loading labels...
+                </div>
+            `;
+            
+            fetch(`/api/available-labels?${params}`)
+                .then(response => response.json())
+                .then(labels => {
+                    // Clear existing items
+                    menu.innerHTML = '';
+                    
+                    // Add "All Labels" option
+                    const allItem = document.createElement('div');
+                    allItem.className = 'checkbox-dropdown-item';
+                    const allLabelsChecked = currentLabels.length === 0 || currentLabels.length === labels.length;
+                    allItem.innerHTML = `
+                        <input type="checkbox" id="label-all" ${allLabelsChecked ? 'checked' : ''}>
+                        <label for="label-all" class="mb-0">All Labels</label>
+                    `;
+                    menu.appendChild(allItem);
+                    
+                    // Add separator
+                    const separator = document.createElement('hr');
+                    separator.className = 'dropdown-divider my-1';
+                    menu.appendChild(separator);
+                    
+                    // Add label options
+                    labels.forEach((label, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'checkbox-dropdown-item';
+                        const isChecked = currentLabels.includes(label);
+                        if (isChecked) {
+                            item.classList.add('checked');
+                        }
+                        
+                        item.innerHTML = `
+                            <input type="checkbox" id="label-${index}" value="${label}" ${isChecked ? 'checked' : ''}>
+                            <label for="label-${index}" class="mb-0">${label}</label>
+                        `;
+                        menu.appendChild(item);
+                    });
+                    
+                    // Add event listeners to checkboxes
+                    menu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                        checkbox.addEventListener('change', function() {
+                            if (this.id === 'label-all') {
+                                if (this.checked) {
+                                    // Select all labels
+                                    currentLabels = [...labels]; // Copy all available labels
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = true;
+                                            cb.closest('.checkbox-dropdown-item').classList.add('checked');
+                                        }
+                                    });
+                                } else {
+                                    // Clear all selections
+                                    currentLabels = [];
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = false;
+                                            cb.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                        }
+                                    });
+                                }
+                            } else {
+                                // Handle individual label selection
+                                const labelValue = this.value;
+                                if (this.checked) {
+                                    if (!currentLabels.includes(labelValue)) {
+                                        currentLabels.push(labelValue);
+                                    }
+                                    this.closest('.checkbox-dropdown-item').classList.add('checked');
+                                } else {
+                                    currentLabels = currentLabels.filter(l => l !== labelValue);
+                                    this.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                }
+                                
+                                // Update "All Labels" checkbox based on selection state
+                                const allCheckbox = menu.querySelector('#label-all');
+                                allCheckbox.checked = currentLabels.length === labels.length;
+                            }
+                            
+                            updateLabelDropdownText();
+                            loadStats();
+                        });
+                    });
+                    
+                    updateLabelDropdownText();
+                })
+                .catch(error => {
+                    console.error('Error loading labels:', error);
+                    // Fallback to basic labels
+                    menu.innerHTML = `
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-all" checked>
+                            <label for="label-all" class="mb-0">All Labels</label>
+                        </div>
+                        <hr class="dropdown-divider my-1">
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-bug" value="bug">
+                            <label for="label-bug" class="mb-0">bug</label>
+                        </div>
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-feature" value="feature">
+                            <label for="label-feature" class="mb-0">feature</label>
+                        </div>
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-enhancement" value="enhancement">
+                            <label for="label-enhancement" class="mb-0">enhancement</label>
+                        </div>
+                        <div class="checkbox-dropdown-item">
+                            <input type="checkbox" id="label-documentation" value="documentation">
+                            <label for="label-documentation" class="mb-0">documentation</label>
+                        </div>
+                    `;
+                    
+                    // Add event listeners for fallback labels
+                    menu.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                        checkbox.addEventListener('change', function() {
+                            if (this.id === 'label-all') {
+                                const fallbackLabels = ['bug', 'feature', 'enhancement', 'documentation'];
+                                if (this.checked) {
+                                    // Select all labels
+                                    currentLabels = [...fallbackLabels];
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = true;
+                                            cb.closest('.checkbox-dropdown-item').classList.add('checked');
+                                        }
+                                    });
+                                } else {
+                                    // Clear all selections
+                                    currentLabels = [];
+                                    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                                        if (cb.id !== 'label-all') {
+                                            cb.checked = false;
+                                            cb.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                        }
+                                    });
+                                }
+                            } else {
+                                const labelValue = this.value;
+                                if (this.checked) {
+                                    if (!currentLabels.includes(labelValue)) {
+                                        currentLabels.push(labelValue);
+                                    }
+                                    this.closest('.checkbox-dropdown-item').classList.add('checked');
+                                } else {
+                                    currentLabels = currentLabels.filter(l => l !== labelValue);
+                                    this.closest('.checkbox-dropdown-item').classList.remove('checked');
+                                }
+                                
+                                const allCheckbox = menu.querySelector('#label-all');
+                                const fallbackLabels = ['bug', 'feature', 'enhancement', 'documentation'];
+                                allCheckbox.checked = currentLabels.length === fallbackLabels.length;
+                            }
+                            
+                            updateLabelDropdownText();
+                            loadStats();
+                        });
+                    });
+                });
+        }
+        
         function loadStats() {
             showLoading(true);
             
             const params = new URLSearchParams();
             if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
             currentLabels.forEach(label => params.append('labels', label));
             
             fetch(`/api/pr-stats?${params}`)
@@ -230,6 +631,7 @@
             // Fetch PR details
             const params = new URLSearchParams({ type });
             if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
                 currentLabels.forEach(label => params.append('labels', label));
             }
@@ -275,7 +677,158 @@
                 })
                 .catch(error => {
                     console.error('Error loading PR details:', error);
-                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
+                                        modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
+                });
+        }
+        
+
+        
+        function loadReviewerStats() {
+            const reviewersList = document.getElementById('reviewersList');
+            
+            // Show loading
+            reviewersList.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-info" role="status"></div>
+                    <p class="mt-2">Loading reviewers...</p>
+                </div>
+            `;
+            
+            // Build URL with current filters
+            let url = `/api/reviewer-stats?repo=${encodeURIComponent(currentRepo)}`;
+            if (currentMonth) {
+                url += `&month=${encodeURIComponent(currentMonth)}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.reviewers.length === 0) {
+                        reviewersList.innerHTML = `
+                            <div class="text-center text-muted">
+                                <i class="fas fa-users fa-2x mb-2"></i>
+                                <p>No reviewers assigned to open PRs</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.reviewers.forEach(reviewer => {
+                        const avatarImg = reviewer.avatar_url ? 
+                            `<img src="${reviewer.avatar_url}" alt="${reviewer.name}" class="reviewer-avatar">` :
+                            `<div class="reviewer-avatar bg-secondary d-flex align-items-center justify-content-center text-white">
+                                <i class="fas fa-user"></i>
+                             </div>`;
+                        
+                        html += `
+                            <div class="reviewer-item" data-reviewer="${reviewer.name}">
+                                <div class="reviewer-stats">
+                                    <div class="d-flex align-items-center">
+                                        ${avatarImg}
+                                        <div>
+                                            <strong>${reviewer.name}</strong>
+                                            <br>
+                                            <small class="text-muted">Assigned reviewer</small>
+                                        </div>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-info fs-6">${reviewer.count}</span>
+                                        <br>
+                                        <small class="text-muted">PRs to review</small>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    reviewersList.innerHTML = html;
+                    
+                    // Add click handlers for reviewers
+                    document.querySelectorAll('.reviewer-item').forEach(item => {
+                        item.addEventListener('click', function(e) {
+                            e.stopPropagation(); // Prevent event bubbling to stat-card handler
+                            const reviewerName = this.dataset.reviewer;
+                            showReviewerPRs(reviewerName);
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading reviewer stats:', error);
+                    reviewersList.innerHTML = `
+                        <div class="text-center text-danger">
+                            <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                            <p>Error loading reviewer statistics</p>
+                        </div>
+                    `;
+                });
+        }
+        
+        function showReviewerPRs(reviewerName) {
+            const modal = new bootstrap.Modal(document.getElementById('reviewerModal'));
+            const modalTitle = document.getElementById('reviewerModalTitle');
+            const modalBody = document.getElementById('reviewerModalBody');
+            
+            modalTitle.textContent = `PRs for ${reviewerName}`;
+            
+            // Show loading
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border" role="status"></div>
+                    <p>Loading PRs for ${reviewerName}...</p>
+                </div>
+            `;
+            
+            modal.show();
+            
+            // Build URL with current filters
+            let url = `/api/reviewer-prs?reviewer=${encodeURIComponent(reviewerName)}&repo=${encodeURIComponent(currentRepo)}`;
+            if (currentMonth) {
+                url += `&month=${encodeURIComponent(currentMonth)}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(prs => {
+                    if (prs.length === 0) {
+                        modalBody.innerHTML = '<p class="text-center text-muted">No PRs found for this reviewer.</p>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    prs.forEach(pr => {
+                        const createdDate = new Date(pr.created_at).toLocaleDateString();
+                        const labels = pr.labels.map(label => 
+                            `<span class="badge bg-primary label-badge">${label}</span>`
+                        ).join('');
+                        
+                        html += `
+                            <div class="pr-item open">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1">
+                                            <a href="${pr.html_url}" target="_blank" class="text-decoration-none">
+                                                #${pr.number} ${pr.title}
+                                            </a>
+                                        </h6>
+                                        <small class="text-muted">
+                                            by ${pr.user} • ${createdDate}
+                                        </small>
+                                        ${labels ? `<div class="mt-1">${labels}</div>` : ''}
+                                    </div>
+                                    <span class="badge bg-warning text-dark ms-2">
+                                        Pending Review
+                                    </span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    modalBody.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading reviewer PRs:', error);
+                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading PRs for this reviewer.</p>';
                 });
         }
     </script>

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira Ticket Management - GitHub PR Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .ticket-item {
+            border-left: 3px solid #ffc107;
+            margin-bottom: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .priority-critical { border-left-color: #dc3545; }
+        .priority-high { border-left-color: #fd7e14; }
+        .priority-medium { border-left-color: #ffc107; }
+        .priority-low { border-left-color: #28a745; }
+        
+        .form-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <h1 class="text-center">
+                    <i class="fas fa-cogs"></i> Jira Ticket Management
+                </h1>
+                <div class="text-center">
+                    <a href="/" class="btn btn-outline-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="form-section">
+                    <h4><i class="fas fa-bolt"></i> Quick Actions</h4>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn btn-success" onclick="loadSampleTickets()">
+                            <i class="fas fa-plus"></i> Load Sample ZDI Tickets
+                        </button>
+                        <button class="btn btn-info" onclick="loadTickets()">
+                            <i class="fas fa-refresh"></i> Refresh Tickets
+                        </button>
+                        <button class="btn btn-warning" onclick="testJiraConnection()">
+                            <i class="fas fa-test-tube"></i> Test Connection
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Add New Ticket Form -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="form-section">
+                    <h4><i class="fas fa-plus-circle"></i> Add New Ticket</h4>
+                    <form id="ticketForm">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <label for="ticketKey" class="form-label">Ticket Key *</label>
+                                <input type="text" class="form-control" id="ticketKey" placeholder="ZDI-001" required>
+                            </div>
+                            <div class="col-md-5">
+                                <label for="ticketSummary" class="form-label">Summary *</label>
+                                <input type="text" class="form-control" id="ticketSummary" placeholder="Brief description of the ticket" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="ticketStatus" class="form-label">Status</label>
+                                <select class="form-select" id="ticketStatus">
+                                    <option value="QAT-Testing" selected>QAT-Testing</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Done">Done</option>
+                                    <option value="To Do">To Do</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="ticketPriority" class="form-label">Priority</label>
+                                <select class="form-select" id="ticketPriority">
+                                    <option value="Critical">Critical</option>
+                                    <option value="High">High</option>
+                                    <option value="Medium" selected>Medium</option>
+                                    <option value="Low">Low</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-md-4">
+                                <label for="ticketAssignee" class="form-label">Assignee</label>
+                                <input type="text" class="form-control" id="ticketAssignee" placeholder="John Smith" value="Unassigned">
+                            </div>
+                            <div class="col-md-8 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Add Ticket
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Current Tickets -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="form-section">
+                    <h4><i class="fas fa-list"></i> Current Tickets (<span id="ticketCount">0</span>)</h4>
+                    <div id="ticketsList">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status"></div>
+                            <p>Loading tickets...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Status Messages -->
+        <div id="messageArea"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Load tickets on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTickets();
+            
+            // Form submission
+            document.getElementById('ticketForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                addTicket();
+            });
+        });
+        
+        function showMessage(message, type = 'info') {
+            const messageArea = document.getElementById('messageArea');
+            const alertClass = type === 'error' ? 'alert-danger' : 'alert-success';
+            
+            messageArea.innerHTML = `
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alert = messageArea.querySelector('.alert');
+                if (alert) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }
+            }, 5000);
+        }
+        
+        function loadTickets() {
+            fetch('/api/jira-tickets')
+                .then(response => response.json())
+                .then(tickets => {
+                    displayTickets(tickets);
+                })
+                .catch(error => {
+                    console.error('Error loading tickets:', error);
+                    showMessage('Error loading tickets', 'error');
+                });
+        }
+        
+        function displayTickets(tickets) {
+            const ticketsList = document.getElementById('ticketsList');
+            const ticketCount = document.getElementById('ticketCount');
+            
+            ticketCount.textContent = tickets.length;
+            
+            if (tickets.length === 0) {
+                ticketsList.innerHTML = '<p class="text-muted text-center">No tickets found. Add some tickets using the form above.</p>';
+                return;
+            }
+            
+            let html = '';
+            tickets.forEach(ticket => {
+                const priorityClass = `priority-${ticket.priority.toLowerCase()}`;
+                const createdDate = new Date(ticket.created).toLocaleDateString();
+                
+                html += `
+                    <div class="ticket-item ${priorityClass}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">
+                                    <a href="${ticket.link}" target="_blank" class="text-decoration-none">
+                                        ${ticket.key}: ${ticket.summary}
+                                    </a>
+                                </h6>
+                                <small class="text-muted">
+                                    Assignee: ${ticket.assignee} • Created: ${createdDate}
+                                </small>
+                                <div class="mt-2">
+                                    <span class="badge bg-warning text-dark me-2">${ticket.status}</span>
+                                    <span class="badge bg-primary">${ticket.priority}</span>
+                                    <span class="badge bg-secondary">${ticket.source}</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="removeTicket('${ticket.key}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            ticketsList.innerHTML = html;
+        }
+        
+        function addTicket() {
+            const ticketData = {
+                key: document.getElementById('ticketKey').value,
+                summary: document.getElementById('ticketSummary').value,
+                status: document.getElementById('ticketStatus').value,
+                priority: document.getElementById('ticketPriority').value,
+                assignee: document.getElementById('ticketAssignee').value
+            };
+            
+            fetch('/api/jira-add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(ticketData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    document.getElementById('ticketForm').reset();
+                    document.getElementById('ticketStatus').value = 'QAT-Testing';
+                    document.getElementById('ticketPriority').value = 'Medium';
+                    document.getElementById('ticketAssignee').value = 'Unassigned';
+                    loadTickets(); // Refresh the list
+                } else {
+                    showMessage(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding ticket:', error);
+                showMessage('Error adding ticket', 'error');
+            });
+        }
+        
+        function removeTicket(key) {
+            if (confirm(`Are you sure you want to remove ticket ${key}?`)) {
+                // Implementation would go here - not implemented yet
+                showMessage(`Remove functionality for ${key} not implemented yet`, 'info');
+            }
+        }
+        
+        function loadSampleTickets() {
+            fetch('/api/jira-sample')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showMessage(data.message, 'success');
+                        loadTickets(); // Refresh the list
+                    } else {
+                        showMessage(data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading sample tickets:', error);
+                    showMessage('Error loading sample tickets', 'error');
+                });
+        }
+        
+        function testJiraConnection() {
+            fetch('/api/jira-test')
+                .then(response => response.json())
+                .then(data => {
+                    showMessage(data.message, data.success ? 'success' : 'error');
+                })
+                .catch(error => {
+                    console.error('Error testing connection:', error);
+                    showMessage('Error testing connection', 'error');
+                });
+        }
+    </script>
+</body>
+</html>
