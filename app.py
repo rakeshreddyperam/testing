@@ -40,12 +40,19 @@ class GitHubService:
             
             print(f"DEBUG: Response status: {response.status_code}")
             
-            # Check if we hit rate limit or auth issues
+            # Enhanced error handling for different HTTP status codes
             if response.status_code == 403:
-                print("Rate limit exceeded or authentication required. Using mock data.")
+                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                if 'rate limit' in error_data.get('message', '').lower():
+                    print("Rate limit exceeded. Consider using a personal access token for higher limits.")
+                else:
+                    print("Authentication required or insufficient permissions. Check your GitHub token.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code == 404:
-                print(f"Repository '{self.repo}' not found. Using mock data.")
+                print(f"Repository '{self.repo}' not found or you don't have access. Check repository name and permissions.")
+                return self._get_mock_data(state, labels, month)
+            elif response.status_code == 401:
+                print("Invalid GitHub token. Please check your GITHUB_TOKEN environment variable.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code != 200:
                 print(f"API error {response.status_code}: {response.text}")
@@ -170,11 +177,15 @@ def pr_stats():
     """API endpoint to get PR statistics"""
     month = request.args.get('month')
     labels = request.args.getlist('labels')
+    repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
     
-    print(f"DEBUG: Getting PR stats for month={month}, labels={labels}")
+    print(f"DEBUG: Getting PR stats for repo={repo}, month={month}, labels={labels}")
+    
+    # Create GitHub service for the requested repository
+    current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
     
     # Get all PRs
-    all_prs = github_service.get_pull_requests(month=month)
+    all_prs = current_service.get_pull_requests(month=month)
     print(f"DEBUG: Got {len(all_prs)} total PRs")
     
     # Get open PRs
@@ -186,7 +197,7 @@ def pr_stats():
     print(f"DEBUG: Found {len(closed_prs)} closed PRs")
     
     # Get PRs with specific labels
-    labeled_prs = github_service.get_pull_requests(labels=labels, month=month) if labels else []
+    labeled_prs = current_service.get_pull_requests(labels=labels, month=month) if labels else []
     print(f"DEBUG: Found {len(labeled_prs)} labeled PRs")
     
     stats = {
@@ -205,11 +216,15 @@ def get_prs():
     pr_type = request.args.get('type', 'open')
     month = request.args.get('month')
     labels = request.args.getlist('labels')
+    repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+    
+    # Create GitHub service for the requested repository
+    current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
     
     if pr_type == 'labeled':
-        prs = github_service.get_pull_requests(labels=labels, month=month)
+        prs = current_service.get_pull_requests(labels=labels, month=month)
     else:
-        prs = github_service.get_pull_requests(state=pr_type, month=month)
+        prs = current_service.get_pull_requests(state=pr_type, month=month)
     
     # Format PR data for frontend
     formatted_prs = []
@@ -231,7 +246,12 @@ def get_prs():
 def available_months():
     """Get available months from PRs"""
     try:
-        prs = github_service.get_pull_requests()
+        repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        prs = current_service.get_pull_requests()
         months = set()
         
         for pr in prs:
@@ -244,6 +264,28 @@ def available_months():
         # Return some default months if there's an error
         return jsonify(['2024-10', '2024-09', '2024-08'])
 
+@app.route('/api/available-labels')
+def available_labels():
+    """Get available labels from PRs"""
+    try:
+        repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        prs = current_service.get_pull_requests()
+        labels = set()
+        
+        for pr in prs:
+            for label in pr.get('labels', []):
+                labels.add(label['name'])
+        
+        return jsonify(sorted(list(labels)))
+    except Exception as e:
+        print(f"Error getting available labels: {e}")
+        # Return some default labels if there's an error
+        return jsonify(['bug', 'feature', 'enhancement', 'documentation', 'performance'])
+
 @app.route('/api/test-mock')
 def test_mock():
     """Test endpoint to force mock data"""
@@ -252,6 +294,172 @@ def test_mock():
         'count': len(mock_data),
         'sample': mock_data[0] if mock_data else None
     })
+
+@app.route('/api/reviewer-stats')
+def get_reviewer_stats():
+    """Get reviewer statistics for open PRs"""
+    try:
+        repo = request.args.get('repo', GITHUB_REPO)
+        month = request.args.get('month')
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        # Get open PRs
+        prs = current_service.get_pull_requests(state='open', month=month)
+        
+        # Count PRs per reviewer
+        reviewer_stats = {}
+        
+        for pr in prs:
+            # Get requested reviewers
+            requested_reviewers = pr.get('requested_reviewers', [])
+            
+            # Also check for review requests from teams (if any)
+            requested_teams = pr.get('requested_teams', [])
+            
+            # Count individual reviewers
+            for reviewer in requested_reviewers:
+                reviewer_login = reviewer['login']
+                if reviewer_login not in reviewer_stats:
+                    reviewer_stats[reviewer_login] = {
+                        'name': reviewer_login,
+                        'avatar_url': reviewer.get('avatar_url', ''),
+                        'count': 0,
+                        'prs': []
+                    }
+                reviewer_stats[reviewer_login]['count'] += 1
+                reviewer_stats[reviewer_login]['prs'].append({
+                    'number': pr['number'],
+                    'title': pr['title'],
+                    'html_url': pr['html_url'],
+                    'created_at': pr['created_at']
+                })
+            
+            # Count team reviewers
+            for team in requested_teams:
+                team_name = f"@{team['name']}"
+                if team_name not in reviewer_stats:
+                    reviewer_stats[team_name] = {
+                        'name': team_name,
+                        'avatar_url': '',
+                        'count': 0,
+                        'prs': []
+                    }
+                reviewer_stats[team_name]['count'] += 1
+                reviewer_stats[team_name]['prs'].append({
+                    'number': pr['number'],
+                    'title': pr['title'],
+                    'html_url': pr['html_url'],
+                    'created_at': pr['created_at']
+                })
+        
+        # Convert to list and sort by count
+        reviewer_list = list(reviewer_stats.values())
+        reviewer_list.sort(key=lambda x: x['count'], reverse=True)
+        
+        return jsonify({
+            'reviewers': reviewer_list,
+            'total_reviewers': len(reviewer_list),
+            'total_pending_reviews': sum(r['count'] for r in reviewer_list)
+        })
+        
+    except Exception as e:
+        print(f"Error getting reviewer stats: {e}")
+        return jsonify({'reviewers': [], 'total_reviewers': 0, 'total_pending_reviews': 0}), 500
+
+@app.route('/api/reviewer-prs')
+def get_reviewer_prs():
+    """Get PRs assigned to a specific reviewer"""
+    try:
+        reviewer = request.args.get('reviewer')
+        repo = request.args.get('repo', GITHUB_REPO)
+        month = request.args.get('month')
+        
+        if not reviewer:
+            return jsonify({'error': 'Reviewer parameter required'}), 400
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        # Get open PRs
+        prs = current_service.get_pull_requests(state='open', month=month)
+        
+        # Filter PRs for the specific reviewer
+        reviewer_prs = []
+        for pr in prs:
+            requested_reviewers = pr.get('requested_reviewers', [])
+            requested_teams = pr.get('requested_teams', [])
+            
+            # Check if reviewer is in requested reviewers
+            is_reviewer = any(r['login'] == reviewer for r in requested_reviewers)
+            
+            # Check if reviewer is a team (starts with @)
+            if reviewer.startswith('@'):
+                team_name = reviewer[1:]  # Remove @ prefix
+                is_reviewer = any(t['name'] == team_name for t in requested_teams)
+            
+            if is_reviewer:
+                reviewer_prs.append({
+                    'number': pr['number'],
+                    'title': pr['title'],
+                    'html_url': pr['html_url'],
+                    'created_at': pr['created_at'],
+                    'updated_at': pr['updated_at'],
+                    'user': pr['user']['login'],
+                    'labels': [label['name'] for label in pr['labels']]
+                })
+        
+        return jsonify(reviewer_prs)
+        
+    except Exception as e:
+        print(f"Error getting reviewer PRs: {e}")
+        return jsonify([]), 500
+
+@app.route('/api/search-prs')
+def search_prs():
+    """Advanced PR search with sorting and filtering"""
+    try:
+        search_query = request.args.get('q', '').lower()
+        sort_by = request.args.get('sort', 'created')
+        sort_order = request.args.get('order', 'desc')
+        state = request.args.get('state', 'open')
+        repo = request.args.get('repo', GITHUB_REPO)
+        
+        # Create GitHub service for the requested repository
+        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        
+        # Get PRs from service
+        prs = current_service.get_pull_requests(state=state if state != 'all' else None)
+        
+        # Search functionality
+        if search_query:
+            filtered_prs = []
+            for pr in prs:
+                if (search_query in pr.get('title', '').lower() or
+                    search_query in pr.get('user', {}).get('login', '').lower() or
+                    search_query in str(pr.get('number', ''))):
+                    filtered_prs.append(pr)
+            prs = filtered_prs
+        
+        # Sorting functionality
+        reverse_order = sort_order == 'desc'
+        
+        if sort_by == 'created':
+            prs.sort(key=lambda x: x.get('created_at', ''), reverse=reverse_order)
+        elif sort_by == 'updated':
+            prs.sort(key=lambda x: x.get('updated_at', ''), reverse=reverse_order)
+        elif sort_by == 'title':
+            prs.sort(key=lambda x: x.get('title', '').lower(), reverse=reverse_order)
+        elif sort_by == 'author':
+            prs.sort(key=lambda x: x.get('user', {}).get('login', '').lower(), reverse=reverse_order)
+        elif sort_by == 'number':
+            prs.sort(key=lambda x: x.get('number', 0), reverse=reverse_order)
+        
+        return jsonify(prs)
+    except Exception as e:
+        print(f"Error searching PRs: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
