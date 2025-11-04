@@ -258,9 +258,20 @@ def pr_stats():
         closed_prs = [pr for pr in all_prs if pr['state'] == 'closed']
         logger.debug(f"Found {len(closed_prs)} closed PRs")
     
-        # Get PRs with specific labels
-        labeled_prs = current_service.get_pull_requests(labels=labels, month=month) if labels else []
-        logger.debug(f"Found {len(labeled_prs)} labeled PRs")
+        # Get PRs with specific labels (only open ones)
+        if labels:
+            # Filter open PRs by labels instead of getting all labeled PRs
+            labeled_prs = []
+            for pr in open_prs:
+                pr_labels = [label['name'] for label in pr['labels']]
+                if any(label.lower() in [pl.lower() for pl in pr_labels] for label in labels):
+                    labeled_prs.append(pr)
+            logger.debug(f"Found {len(labeled_prs)} labeled open PRs")
+            # Debug: print the states of labeled PRs
+            for pr in labeled_prs:
+                logger.debug(f"Labeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
+        else:
+            labeled_prs = []
         
         stats = {
             'available_count': len(open_prs),
@@ -297,7 +308,19 @@ def get_prs():
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
         
         if pr_type == 'labeled':
-            prs = current_service.get_pull_requests(labels=labels, month=month)
+            # Get only open PRs and filter by labels
+            all_prs = current_service.get_pull_requests(state='open', month=month)
+            logger.debug(f"Got {len(all_prs)} open PRs for label filtering")
+            prs = []
+            if labels:
+                for pr in all_prs:
+                    pr_labels = [label['name'] for label in pr['labels']]
+                    if any(label.lower() in [pl.lower() for pl in pr_labels] for label in labels):
+                        prs.append(pr)
+                        logger.debug(f"Including labeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
+            else:
+                prs = all_prs
+            logger.debug(f"Final labeled PRs count: {len(prs)}")
         else:
             prs = current_service.get_pull_requests(state=pr_type, month=month)
     
