@@ -673,6 +673,46 @@
                             `;
                         }
                         
+                        // Review status info for open PRs
+                        let reviewStatusInfo = '';
+                        if (pr.state === 'open' && pr.review_status) {
+                            const status = pr.review_status;
+                            let statusBadge = '';
+                            let statusText = '';
+                            
+                            if (status.approved && !status.changes_requested) {
+                                statusBadge = 'bg-success';
+                                statusText = `Approved (${status.approval_count})`;
+                                if (status.mergeable && status.status_checks === 'success') {
+                                    statusText += ' - Ready to merge';
+                                } else if (!status.mergeable) {
+                                    statusText += ' - Merge conflicts';
+                                } else if (status.status_checks === 'failure') {
+                                    statusText += ' - Checks failing';
+                                } else if (status.status_checks === 'pending') {
+                                    statusText += ' - Checks pending';
+                                }
+                            } else if (status.changes_requested) {
+                                statusBadge = 'bg-warning';
+                                statusText = 'Changes requested';
+                            } else if (status.pending_review) {
+                                statusBadge = 'bg-info';
+                                statusText = 'Pending review';
+                            } else if (status.review_count > 0) {
+                                statusBadge = 'bg-secondary';
+                                statusText = `Reviews: ${status.review_count}`;
+                            }
+                            
+                            if (statusText) {
+                                reviewStatusInfo = `
+                                    <br>
+                                    <small class="${statusBadge} text-white px-2 py-1 rounded">
+                                        <i class="fas fa-code-branch"></i> ${statusText}
+                                    </small>
+                                `;
+                            }
+                        }
+                        
                         const labels = pr.labels.map(label => 
                             `<span class="badge bg-primary label-badge">${label}</span>`
                         ).join('');
@@ -690,6 +730,7 @@
                                             by ${pr.user} • Created: ${createdDate} • Updated: ${updatedDate}
                                         </small>
                                         ${lastCommentInfo}
+                                        ${reviewStatusInfo}
                                         ${labels ? `<div class="mt-1">${labels}</div>` : ''}
                                     </div>
                                     <span class="badge bg-${pr.state === 'open' ? 'success' : 'secondary'} ms-2">

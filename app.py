@@ -184,6 +184,73 @@ class GitHubService:
             print(f"Error fetching comments for PR #{pr_number}: {e}")
             return None
     
+    def get_pr_review_status(self, pr_number):
+        """Get the review status and merge readiness for a specific PR"""
+        try:
+            # Get PR details
+            pr_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}'
+            pr_response = requests.get(pr_url, headers=self.headers)
+            
+            # Get PR reviews
+            reviews_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/reviews'
+            reviews_response = requests.get(reviews_url, headers=self.headers)
+            
+            # Get PR status checks
+            status_url = f'{BASE_URL}/repos/{self.repo}/commits/{pr_response.json().get("head", {}).get("sha", "")}/status'
+            status_response = requests.get(status_url, headers=self.headers)
+            
+            review_status = {
+                'approved': False,
+                'changes_requested': False,
+                'pending_review': True,
+                'mergeable': False,
+                'status_checks': 'unknown',
+                'review_count': 0,
+                'approval_count': 0
+            }
+            
+            if pr_response.status_code == 200:
+                pr_data = pr_response.json()
+                review_status['mergeable'] = pr_data.get('mergeable', False)
+                review_status['draft'] = pr_data.get('draft', False)
+            
+            if reviews_response.status_code == 200:
+                reviews = reviews_response.json()
+                review_status['review_count'] = len(reviews)
+                
+                # Analyze reviews (latest review per reviewer wins)
+                reviewer_states = {}
+                for review in reviews:
+                    reviewer = review['user']['login']
+                    state = review['state']
+                    reviewer_states[reviewer] = state
+                
+                # Count final states
+                approved_count = sum(1 for state in reviewer_states.values() if state == 'APPROVED')
+                changes_requested = any(state == 'CHANGES_REQUESTED' for state in reviewer_states.values())
+                
+                review_status['approval_count'] = approved_count
+                review_status['approved'] = approved_count > 0 and not changes_requested
+                review_status['changes_requested'] = changes_requested
+                review_status['pending_review'] = len(reviewer_states) == 0
+            
+            if status_response.status_code == 200:
+                status_data = status_response.json()
+                review_status['status_checks'] = status_data.get('state', 'unknown')
+            
+            return review_status
+        except Exception as e:
+            print(f"Error fetching review status for PR #{pr_number}: {e}")
+            return {
+                'approved': False,
+                'changes_requested': False,
+                'pending_review': True,
+                'mergeable': False,
+                'status_checks': 'unknown',
+                'review_count': 0,
+                'approval_count': 0
+            }
+    
     def _get_mock_data(self, state='all', labels=None, month=None):
         """Return mock PR data for testing"""
         mock_prs = [
@@ -368,13 +435,18 @@ def get_prs():
         else:
             prs = current_service.get_pull_requests(state=pr_type, month=month)
     
-        # Format PR data for frontend and optionally get last comment dates
+        # Format PR data for frontend and optionally get last comment dates and review status
         formatted_prs = []
         for pr in prs:
             # Get last comment date only if requested (this might take some time for many PRs)
             last_comment_date = None
             if include_comments:
                 last_comment_date = current_service.get_pr_last_comment_date(pr['number'])
+            
+            # Get review status for open PRs
+            review_status = None
+            if pr['state'] == 'open':
+                review_status = current_service.get_pr_review_status(pr['number'])
             
             formatted_prs.append({
                 'title': pr['title'],
@@ -383,6 +455,7 @@ def get_prs():
                 'created_at': pr['created_at'],
                 'updated_at': pr['updated_at'],
                 'last_comment_at': last_comment_date,
+                'review_status': review_status,
                 'html_url': pr['html_url'],
                 'user': pr['user']['login'],
                 'labels': [label['name'] for label in pr['labels']]
