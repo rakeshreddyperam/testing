@@ -142,6 +142,48 @@ class GitHubService:
             print(f"Error fetching PRs: {e}. Using mock data.")
             return self._get_mock_data(state, labels, month)
     
+    def get_pr_last_comment_date(self, pr_number):
+        """Get the last comment date for a specific PR"""
+        try:
+            # Get PR comments
+            comments_url = f'{BASE_URL}/repos/{self.repo}/issues/{pr_number}/comments'
+            comments_response = requests.get(comments_url, headers=self.headers)
+            
+            # Get PR review comments
+            review_comments_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/comments'
+            review_comments_response = requests.get(review_comments_url, headers=self.headers)
+            
+            # Get PR reviews
+            reviews_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/reviews'
+            reviews_response = requests.get(reviews_url, headers=self.headers)
+            
+            last_comment_date = None
+            
+            # Check all comment types and find the most recent
+            if comments_response.status_code == 200:
+                comments = comments_response.json()
+                if comments:
+                    last_comment_date = comments[-1]['created_at']
+            
+            if review_comments_response.status_code == 200:
+                review_comments = review_comments_response.json()
+                if review_comments:
+                    review_date = review_comments[-1]['created_at']
+                    if not last_comment_date or review_date > last_comment_date:
+                        last_comment_date = review_date
+            
+            if reviews_response.status_code == 200:
+                reviews = reviews_response.json()
+                if reviews:
+                    review_date = reviews[-1]['submitted_at']
+                    if not last_comment_date or review_date > last_comment_date:
+                        last_comment_date = review_date
+            
+            return last_comment_date
+        except Exception as e:
+            print(f"Error fetching comments for PR #{pr_number}: {e}")
+            return None
+    
     def _get_mock_data(self, state='all', labels=None, month=None):
         """Return mock PR data for testing"""
         mock_prs = [
@@ -301,8 +343,10 @@ def get_prs():
         month = request.args.get('month')
         labels = request.args.getlist('labels')
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        sort_by = request.args.get('sort', 'newest')  # newest, oldest, most_recent, updated
+        include_comments = request.args.get('include_comments', 'false').lower() == 'true'
         
-        logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}")
+        logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}, sort={sort_by}, include_comments={include_comments}")
         
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
@@ -324,19 +368,39 @@ def get_prs():
         else:
             prs = current_service.get_pull_requests(state=pr_type, month=month)
     
-        # Format PR data for frontend
+        # Format PR data for frontend and optionally get last comment dates
         formatted_prs = []
         for pr in prs:
+            # Get last comment date only if requested (this might take some time for many PRs)
+            last_comment_date = None
+            if include_comments:
+                last_comment_date = current_service.get_pr_last_comment_date(pr['number'])
+            
             formatted_prs.append({
                 'title': pr['title'],
                 'number': pr['number'],
                 'state': pr['state'],
                 'created_at': pr['created_at'],
                 'updated_at': pr['updated_at'],
+                'last_comment_at': last_comment_date,
                 'html_url': pr['html_url'],
                 'user': pr['user']['login'],
                 'labels': [label['name'] for label in pr['labels']]
             })
+        
+        # Sort PRs based on sort parameter
+        if sort_by == 'newest':
+            # Most recently created first
+            formatted_prs.sort(key=lambda x: x['created_at'], reverse=True)
+        elif sort_by == 'oldest':
+            # Oldest created first
+            formatted_prs.sort(key=lambda x: x['created_at'], reverse=False)
+        elif sort_by == 'most_recent':
+            # Most recently updated first
+            formatted_prs.sort(key=lambda x: x['updated_at'], reverse=True)
+        elif sort_by == 'last_comment':
+            # Most recent comment first (handle None values)
+            formatted_prs.sort(key=lambda x: x['last_comment_at'] or '1970-01-01T00:00:00Z', reverse=True)
         
         response_time = time.time() - start_time
         logger.info(f"PR details response time: {response_time:.2f}s, returned {len(formatted_prs)} PRs")

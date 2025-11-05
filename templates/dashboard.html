@@ -274,7 +274,15 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="modalTitle">Pull Requests</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <div class="d-flex align-items-center gap-2">
+                            <select class="form-select form-select-sm" id="sortSelect" style="width: auto;">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="most_recent">Recently Updated</option>
+                                <option value="last_comment">Latest Comment</option>
+                            </select>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
                     </div>
                     <div class="modal-body" id="modalBody">
                         <div class="text-center">
@@ -629,7 +637,11 @@
             modal.show();
             
             // Fetch PR details
-            const params = new URLSearchParams({ type });
+            const sortBy = document.getElementById('sortSelect').value || 'newest';
+            const params = new URLSearchParams({ type, sort: sortBy });
+            if (sortBy === 'last_comment') {
+                params.append('include_comments', 'true');
+            }
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
@@ -647,6 +659,20 @@
                     let html = '';
                     prs.forEach(pr => {
                         const createdDate = new Date(pr.created_at).toLocaleDateString();
+                        const updatedDate = new Date(pr.updated_at).toLocaleDateString();
+                        
+                        let lastCommentInfo = '';
+                        if (pr.last_comment_at !== undefined) {
+                            const lastCommentDate = pr.last_comment_at ? 
+                                new Date(pr.last_comment_at).toLocaleDateString() : 'No comments';
+                            lastCommentInfo = `
+                                <br>
+                                <small class="text-info">
+                                    <i class="fas fa-comment"></i> Last comment: ${lastCommentDate}
+                                </small>
+                            `;
+                        }
+                        
                         const labels = pr.labels.map(label => 
                             `<span class="badge bg-primary label-badge">${label}</span>`
                         ).join('');
@@ -661,8 +687,9 @@
                                             </a>
                                         </h6>
                                         <small class="text-muted">
-                                            by ${pr.user} • ${createdDate}
+                                            by ${pr.user} • Created: ${createdDate} • Updated: ${updatedDate}
                                         </small>
+                                        ${lastCommentInfo}
                                         ${labels ? `<div class="mt-1">${labels}</div>` : ''}
                                     </div>
                                     <span class="badge bg-${pr.state === 'open' ? 'success' : 'secondary'} ms-2">
@@ -677,8 +704,13 @@
                 })
                 .catch(error => {
                     console.error('Error loading PR details:', error);
-                                        modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
+                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
                 });
+            
+            // Add event listener for sort change
+            document.getElementById('sortSelect').onchange = function() {
+                showPRDetails(type);
+            };
         }
         
 
