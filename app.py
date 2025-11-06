@@ -1,11 +1,14 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 import requests
 import os
+import json
+import csv
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
 import time
 from functools import wraps
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
@@ -21,6 +24,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['UPLOAD_FOLDER'] = 'uploads'
+
+# Create uploads directory if it doesn't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Security headers middleware
 @app.after_request
@@ -68,6 +77,11 @@ def rate_limit(max_requests=60, window=60):
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 GITHUB_REPO = os.getenv('GITHUB_REPO', 'microsoft/vscode')  # Default to a public repo
 BASE_URL = 'https://api.github.com'
+
+# JIRA API configuration
+JIRA_URL = os.getenv('JIRA_URL')  # e.g., 'https://yourcompany.atlassian.net'
+JIRA_USERNAME = os.getenv('JIRA_USERNAME')
+JIRA_API_TOKEN = os.getenv('JIRA_API_TOKEN')  # JIRA API token for authentication
 
 class GitHubService:
     def __init__(self, token, repo):
@@ -330,7 +344,111 @@ class GitHubService:
         
         return mock_prs
 
+class JiraService:
+    def __init__(self):
+        self.jira_data = {}  # Will store uploaded JIRA data
+        self.load_jira_data()
+    
+    def load_jira_data(self):
+        """Load JIRA data from uploaded file if exists"""
+        try:
+            jira_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'jira_data.json')
+            if os.path.exists(jira_file_path):
+                with open(jira_file_path, 'r') as f:
+                    self.jira_data = json.load(f)
+                logger.info(f"Loaded JIRA data for {len(self.jira_data)} tickets")
+        except Exception as e:
+            logger.error(f"Error loading JIRA data: {e}")
+            self.jira_data = {}
+    
+    def save_jira_data(self, data):
+        """Save JIRA data to file"""
+        try:
+            jira_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'jira_data.json')
+            with open(jira_file_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            self.jira_data = data
+            logger.info(f"Saved JIRA data for {len(data)} tickets")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving JIRA data: {e}")
+            return False
+    
+    def extract_jira_keys(self, text):
+        """Extract JIRA ticket keys from text (e.g., PROJ-123, ABC-456)"""
+        import re
+        if not text:
+            return []
+        # Common JIRA key pattern: 2+ uppercase letters, dash, 1+ digits
+        pattern = r'\b[A-Z]{2,}-\d+\b'
+        return list(set(re.findall(pattern, text)))
+    
+    def get_jira_ticket_status(self, ticket_key):
+        """Get JIRA ticket status from uploaded data"""
+        if ticket_key in self.jira_data:
+            return self.jira_data[ticket_key]
+        else:
+            return {
+                'key': ticket_key,
+                'status': 'Not Found',
+                'status_category': 'Unknown',
+                'summary': 'Not in uploaded data',
+                'assignee': 'Unknown',
+                'priority': 'Unknown'
+            }
+    
+    def get_multiple_tickets_status(self, ticket_keys):
+        """Get status for multiple JIRA tickets"""
+        if not ticket_keys:
+            return []
+        
+        tickets = []
+        for key in ticket_keys:
+            tickets.append(self.get_jira_ticket_status(key))
+        return tickets
+    
+    def process_uploaded_file(self, file_path, file_type):
+        """Process uploaded JIRA file (CSV or JSON)"""
+        try:
+            if file_type == 'json':
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                # Expect format: {"TICKET-123": {"status": "...", "summary": "...", ...}}
+                if isinstance(data, dict):
+                    return self.save_jira_data(data)
+                elif isinstance(data, list):
+                    # Convert list format to dict
+                    jira_dict = {}
+                    for item in data:
+                        if 'key' in item:
+                            jira_dict[item['key']] = item
+                    return self.save_jira_data(jira_dict)
+            
+            elif file_type == 'csv':
+                jira_dict = {}
+                with open(file_path, 'r', newline='', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        # Expected CSV columns: key, status, summary, assignee, priority, status_category
+                        if 'key' in row or 'Key' in row:
+                            key = row.get('key') or row.get('Key')
+                            jira_dict[key] = {
+                                'key': key,
+                                'status': row.get('status', row.get('Status', 'Unknown')),
+                                'status_category': row.get('status_category', row.get('Status Category', 'Unknown')),
+                                'summary': row.get('summary', row.get('Summary', 'No summary')),
+                                'assignee': row.get('assignee', row.get('Assignee', 'Unassigned')),
+                                'priority': row.get('priority', row.get('Priority', 'Unknown'))
+                            }
+                return self.save_jira_data(jira_dict)
+            
+            return False
+        except Exception as e:
+            logger.error(f"Error processing JIRA file: {e}")
+            return False
+
 github_service = GitHubService(GITHUB_TOKEN, GITHUB_REPO)
+jira_service = JiraService()
 
 @app.route('/')
 def dashboard():
@@ -448,6 +566,10 @@ def get_prs():
             if pr['state'] == 'open':
                 review_status = current_service.get_pr_review_status(pr['number'])
             
+            # Extract and get JIRA ticket information
+            jira_keys = jira_service.extract_jira_keys(pr['title'] + ' ' + pr.get('body', ''))
+            jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
+            
             formatted_prs.append({
                 'title': pr['title'],
                 'number': pr['number'],
@@ -456,6 +578,7 @@ def get_prs():
                 'updated_at': pr['updated_at'],
                 'last_comment_at': last_comment_date,
                 'review_status': review_status,
+                'jira_tickets': jira_tickets,
                 'html_url': pr['html_url'],
                 'user': pr['user']['login'],
                 'labels': [label['name'] for label in pr['labels']]
@@ -656,6 +779,72 @@ def get_reviewer_prs():
     except Exception as e:
         print(f"Error getting reviewer PRs: {e}")
         return jsonify([]), 500
+
+@app.route('/api/jira/upload', methods=['POST'])
+def upload_jira_file():
+    """Upload JIRA data file (CSV or JSON)"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Check file extension
+        filename = secure_filename(file.filename)
+        file_ext = filename.lower().split('.')[-1]
+        
+        if file_ext not in ['csv', 'json']:
+            return jsonify({'error': 'Only CSV and JSON files are supported'}), 400
+        
+        # Save uploaded file
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f'uploaded_jira.{file_ext}')
+        file.save(file_path)
+        
+        # Process the file
+        success = jira_service.process_uploaded_file(file_path, file_ext)
+        
+        # Clean up uploaded file
+        os.remove(file_path)
+        
+        if success:
+            return jsonify({
+                'message': 'JIRA data uploaded successfully',
+                'tickets_count': len(jira_service.jira_data)
+            })
+        else:
+            return jsonify({'error': 'Failed to process JIRA file'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error uploading JIRA file: {e}")
+        return jsonify({'error': 'Failed to upload JIRA file'}), 500
+
+@app.route('/api/jira/status')
+def get_jira_status():
+    """Get current JIRA data status"""
+    try:
+        return jsonify({
+            'loaded': len(jira_service.jira_data) > 0,
+            'tickets_count': len(jira_service.jira_data),
+            'sample_tickets': list(jira_service.jira_data.keys())[:5] if jira_service.jira_data else []
+        })
+    except Exception as e:
+        logger.error(f"Error getting JIRA status: {e}")
+        return jsonify({'error': 'Failed to get JIRA status'}), 500
+
+@app.route('/api/jira/clear', methods=['POST'])
+def clear_jira_data():
+    """Clear JIRA data"""
+    try:
+        jira_service.jira_data = {}
+        jira_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'jira_data.json')
+        if os.path.exists(jira_file_path):
+            os.remove(jira_file_path)
+        return jsonify({'message': 'JIRA data cleared successfully'})
+    except Exception as e:
+        logger.error(f"Error clearing JIRA data: {e}")
+        return jsonify({'error': 'Failed to clear JIRA data'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
