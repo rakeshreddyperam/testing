@@ -28,6 +28,13 @@ app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
+# Simple memory cache for PR data
+pr_cache = {
+    'data': None,
+    'timestamp': None,
+    'ttl': 900  # 15 minutes cache for much better performance
+}
+
 # Create uploads directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -41,6 +48,24 @@ def add_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: https:;"
     return response
+
+# Cache helper functions
+def is_cache_valid():
+    """Check if cache is still valid"""
+    if pr_cache['data'] is None or pr_cache['timestamp'] is None:
+        return False
+    return time.time() - pr_cache['timestamp'] < pr_cache['ttl']
+
+def get_cached_data():
+    """Get cached data if valid"""
+    if is_cache_valid():
+        return pr_cache['data']
+    return None
+
+def set_cache_data(data):
+    """Set cache data with current timestamp"""
+    pr_cache['data'] = data
+    pr_cache['timestamp'] = time.time()
 
 # Rate limiting decorator
 def rate_limit(max_requests=60, window=60):
@@ -97,39 +122,49 @@ class GitHubService:
     def get_pull_requests(self, state='all', labels=None, month=None):
         """Fetch pull requests from GitHub API"""
         url = f'{BASE_URL}/repos/{self.repo}/pulls'
+        
+        # Handle state parameter correctly
+        if state == 'all':
+            api_state = 'all'
+        elif state in ['open', 'closed']:
+            api_state = state
+        else:
+            logger.warning(f"Invalid state '{state}', defaulting to 'all'")
+            api_state = 'all'
+        
         params = {
-            'state': 'all' if state == 'all' else state,
+            'state': api_state,
             'per_page': 100,
             'sort': 'created',
             'direction': 'desc'
         }
         
         try:
-            print(f"DEBUG: Fetching PRs from {url} with params {params}")
-            response = requests.get(url, headers=self.headers, params=params)
+            logger.debug(f"Fetching PRs from {url} with params {params}")
+            response = requests.get(url, headers=self.headers, params=params, timeout=30)
             
-            print(f"DEBUG: Response status: {response.status_code}")
+            logger.debug(f"Response status: {response.status_code}")
             
             # Enhanced error handling for different HTTP status codes
             if response.status_code == 403:
                 error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
                 if 'rate limit' in error_data.get('message', '').lower():
-                    print("Rate limit exceeded. Consider using a personal access token for higher limits.")
+                    logger.error("Rate limit exceeded. Consider using a personal access token for higher limits.")
                 else:
-                    print("Authentication required or insufficient permissions. Check your GitHub token.")
+                    logger.error("Authentication required or insufficient permissions. Check your GitHub token.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code == 404:
-                print(f"Repository '{self.repo}' not found or you don't have access. Check repository name and permissions.")
+                logger.error(f"Repository '{self.repo}' not found or you don't have access. Check repository name and permissions.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code == 401:
-                print("Invalid GitHub token. Please check your GITHUB_TOKEN environment variable.")
+                logger.error("Invalid GitHub token. Please check your GITHUB_TOKEN environment variable.")
                 return self._get_mock_data(state, labels, month)
             elif response.status_code != 200:
-                print(f"API error {response.status_code}: {response.text}")
+                logger.error(f"API error {response.status_code}: {response.text}")
                 return self._get_mock_data(state, labels, month)
             
             prs = response.json()
-            print(f"DEBUG: Retrieved {len(prs)} PRs from API")
+            logger.debug(f"Retrieved {len(prs)} PRs from API")
             
             # Filter by month if specified
             if month:
@@ -157,47 +192,96 @@ class GitHubService:
             return self._get_mock_data(state, labels, month)
     
     def get_pr_last_comment_date(self, pr_number):
-        """Get the last comment date for a specific PR"""
+        """Get the last comment date for a specific PR (optimized)"""
         try:
-            # Get PR comments
-            comments_url = f'{BASE_URL}/repos/{self.repo}/issues/{pr_number}/comments'
-            comments_response = requests.get(comments_url, headers=self.headers)
+            import concurrent.futures
+            import threading
             
-            # Get PR review comments
-            review_comments_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/comments'
-            review_comments_response = requests.get(review_comments_url, headers=self.headers)
+            # Cache key for this PR's comment data
+            cache_key = f"comments_{self.repo}_{pr_number}"
             
-            # Get PR reviews
-            reviews_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/reviews'
-            reviews_response = requests.get(reviews_url, headers=self.headers)
+            # Simple thread-local cache for comment dates
+            if not hasattr(self, '_comment_cache'):
+                self._comment_cache = {}
+            
+            # Check cache first
+            if cache_key in self._comment_cache:
+                cached_time, cached_result = self._comment_cache[cache_key]
+                # Cache for 5 minutes
+                if time.time() - cached_time < 300:
+                    return cached_result
             
             last_comment_date = None
             
-            # Check all comment types and find the most recent
-            if comments_response.status_code == 200:
-                comments = comments_response.json()
+            # Use ThreadPoolExecutor for parallel API calls
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                # Submit all three API calls in parallel
+                comments_future = executor.submit(self._fetch_issue_comments, pr_number)
+                review_comments_future = executor.submit(self._fetch_review_comments, pr_number)
+                reviews_future = executor.submit(self._fetch_reviews, pr_number)
+                
+                # Collect results
+                all_dates = []
+                
+                # Get issue comments
+                comments = comments_future.result()
                 if comments:
-                    last_comment_date = comments[-1]['created_at']
-            
-            if review_comments_response.status_code == 200:
-                review_comments = review_comments_response.json()
+                    all_dates.extend([comment['created_at'] for comment in comments])
+                
+                # Get review comments
+                review_comments = review_comments_future.result()
                 if review_comments:
-                    review_date = review_comments[-1]['created_at']
-                    if not last_comment_date or review_date > last_comment_date:
-                        last_comment_date = review_date
-            
-            if reviews_response.status_code == 200:
-                reviews = reviews_response.json()
+                    all_dates.extend([comment['created_at'] for comment in review_comments])
+                
+                # Get reviews
+                reviews = reviews_future.result()
                 if reviews:
-                    review_date = reviews[-1]['submitted_at']
-                    if not last_comment_date or review_date > last_comment_date:
-                        last_comment_date = review_date
+                    all_dates.extend([review['submitted_at'] for review in reviews if review.get('submitted_at')])
+            
+            # Find the most recent date
+            if all_dates:
+                last_comment_date = max(all_dates)
+                logger.debug(f"PR #{pr_number}: Found {len(all_dates)} total comments/reviews, latest: {last_comment_date}")
+            
+            # Cache the result
+            self._comment_cache[cache_key] = (time.time(), last_comment_date)
             
             return last_comment_date
+        
         except Exception as e:
-            print(f"Error fetching comments for PR #{pr_number}: {e}")
+            logger.error(f"Error fetching last comment date for PR #{pr_number}: {e}")
             return None
     
+    def _fetch_issue_comments(self, pr_number):
+        """Fetch issue comments for a PR"""
+        try:
+            comments_url = f'{BASE_URL}/repos/{self.repo}/issues/{pr_number}/comments'
+            response = requests.get(comments_url, headers=self.headers, timeout=10)
+            return response.json() if response.status_code == 200 else []
+        except Exception as e:
+            logger.error(f"Error fetching issue comments for PR #{pr_number}: {e}")
+            return []
+    
+    def _fetch_review_comments(self, pr_number):
+        """Fetch review comments for a PR"""
+        try:
+            review_comments_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/comments'
+            response = requests.get(review_comments_url, headers=self.headers, timeout=10)
+            return response.json() if response.status_code == 200 else []
+        except Exception as e:
+            logger.error(f"Error fetching review comments for PR #{pr_number}: {e}")
+            return []
+    
+    def _fetch_reviews(self, pr_number):
+        """Fetch reviews for a PR"""
+        try:
+            reviews_url = f'{BASE_URL}/repos/{self.repo}/pulls/{pr_number}/reviews'
+            response = requests.get(reviews_url, headers=self.headers, timeout=10)
+            return response.json() if response.status_code == 200 else []
+        except Exception as e:
+            logger.error(f"Error fetching reviews for PR #{pr_number}: {e}")
+            return []
+
     def get_pr_review_status(self, pr_number):
         """Get the review status and merge readiness for a specific PR"""
         try:
@@ -347,26 +431,58 @@ class GitHubService:
 class JiraService:
     def __init__(self):
         self.jira_data = {}  # Will store uploaded JIRA data
+        self.upload_metadata = None  # Will store upload timestamp and metadata
         self.load_jira_data()
     
     def load_jira_data(self):
-        """Load JIRA data from uploaded file if exists"""
+        """Load JIRA data from uploaded file only (no dummy data)"""
         try:
+            # Only load from uploaded file
             jira_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'jira_data.json')
             if os.path.exists(jira_file_path):
                 with open(jira_file_path, 'r') as f:
-                    self.jira_data = json.load(f)
-                logger.info(f"Loaded JIRA data for {len(self.jira_data)} tickets")
+                    data = json.load(f)
+                    
+                    # Handle new metadata format
+                    if isinstance(data, dict) and 'tickets' in data:
+                        self.jira_data = data['tickets']
+                        self.upload_metadata = {
+                            'uploaded_at': data.get('uploaded_at'),
+                            'ticket_count': data.get('ticket_count', len(self.jira_data))
+                        }
+                    elif isinstance(data, list):
+                        self.jira_data = {ticket['key']: ticket for ticket in data}
+                        self.upload_metadata = None
+                    else:
+                        self.jira_data = data
+                        self.upload_metadata = None
+                        
+                logger.info(f"Loaded uploaded JIRA data for {len(self.jira_data)} tickets")
+            else:
+                # No uploaded data found
+                self.jira_data = {}
+                self.upload_metadata = None
+                logger.info("No uploaded JIRA data found. Upload a file to see tickets.")
         except Exception as e:
             logger.error(f"Error loading JIRA data: {e}")
             self.jira_data = {}
+            self.upload_metadata = None
     
     def save_jira_data(self, data):
-        """Save JIRA data to file"""
+        """Save JIRA data to file with metadata"""
         try:
+            import datetime
             jira_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'jira_data.json')
+            
+            # Create metadata
+            metadata = {
+                'uploaded_at': datetime.datetime.now().isoformat(),
+                'ticket_count': len(data),
+                'tickets': data
+            }
+            
             with open(jira_file_path, 'w') as f:
-                json.dump(data, f, indent=2)
+                json.dump(metadata, f, indent=2)
             self.jira_data = data
             logger.info(f"Saved JIRA data for {len(data)} tickets")
             return True
@@ -384,18 +500,42 @@ class JiraService:
         return list(set(re.findall(pattern, text)))
     
     def get_jira_ticket_status(self, ticket_key):
-        """Get JIRA ticket status from uploaded data"""
+        """Get JIRA ticket status from loaded data"""
         if ticket_key in self.jira_data:
-            return self.jira_data[ticket_key]
+            ticket = self.jira_data[ticket_key]
+            return {
+                'key': ticket_key,
+                'status': ticket.get('status', 'Unknown'),
+                'status_category': self.get_status_category(ticket.get('status', 'Unknown')),
+                'summary': ticket.get('summary', 'No summary'),
+                'assignee': ticket.get('assignee', 'Unassigned'),
+                'priority': ticket.get('priority', 'Unknown'),
+                'link': ticket.get('link', f"https://onezelis.atlassian.net/browse/{ticket_key}"),
+                'found': True
+            }
         else:
             return {
                 'key': ticket_key,
                 'status': 'Not Found',
                 'status_category': 'Unknown',
-                'summary': 'Not in uploaded data',
+                'summary': 'Ticket not found in data',
                 'assignee': 'Unknown',
-                'priority': 'Unknown'
+                'priority': 'Unknown',
+                'link': f"https://onezelis.atlassian.net/browse/{ticket_key}",
+                'found': False
             }
+    
+    def get_status_category(self, status):
+        """Map status to category for color coding"""
+        status_lower = status.lower()
+        if any(word in status_lower for word in ['done', 'completed', 'resolved', 'closed']):
+            return 'Done'
+        elif any(word in status_lower for word in ['progress', 'development', 'testing', 'qat']):
+            return 'In Progress'
+        elif any(word in status_lower for word in ['todo', 'to do', 'open', 'new', 'backlog']):
+            return 'To Do'
+        else:
+            return 'In Progress'  # Default
     
     def get_multiple_tickets_status(self, ticket_keys):
         """Get status for multiple JIRA tickets"""
@@ -408,40 +548,68 @@ class JiraService:
         return tickets
     
     def process_uploaded_file(self, file_path, file_type):
-        """Process uploaded JIRA file (CSV or JSON)"""
+        """Process uploaded JIRA file (CSV only)"""
         try:
-            if file_type == 'json':
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                # Expect format: {"TICKET-123": {"status": "...", "summary": "...", ...}}
-                if isinstance(data, dict):
-                    return self.save_jira_data(data)
-                elif isinstance(data, list):
-                    # Convert list format to dict
-                    jira_dict = {}
-                    for item in data:
-                        if 'key' in item:
-                            jira_dict[item['key']] = item
-                    return self.save_jira_data(jira_dict)
-            
-            elif file_type == 'csv':
+            if file_type == 'csv':
                 jira_dict = {}
+                processed_count = 0
                 with open(file_path, 'r', newline='', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
-                    for row in reader:
-                        # Expected CSV columns: key, status, summary, assignee, priority, status_category
-                        if 'key' in row or 'Key' in row:
-                            key = row.get('key') or row.get('Key')
-                            jira_dict[key] = {
-                                'key': key,
-                                'status': row.get('status', row.get('Status', 'Unknown')),
-                                'status_category': row.get('status_category', row.get('Status Category', 'Unknown')),
-                                'summary': row.get('summary', row.get('Summary', 'No summary')),
-                                'assignee': row.get('assignee', row.get('Assignee', 'Unassigned')),
-                                'priority': row.get('priority', row.get('Priority', 'Unknown'))
-                            }
+                    logger.info(f"CSV headers detected: {reader.fieldnames}")
+                    
+                    for row_num, row in enumerate(reader, 1):
+                        try:
+                            # Handle different CSV column formats for JIRA export
+                            key = (row.get('Issue key') or row.get('Key') or 
+                                   row.get('key') or row.get('issue_key') or 
+                                   row.get('Issue Key'))
+                            
+                            if key and key.strip():
+                                # Get status with multiple possible column names
+                                status = (row.get('Status') or row.get('status') or 
+                                        row.get('status_name') or 'Unknown')
+                                
+                                # Get summary with multiple possible column names  
+                                summary = (row.get('Summary') or row.get('summary') or 
+                                         row.get('Description') or row.get('description') or 
+                                         'No summary')
+                                
+                                # Get assignee with multiple possible column names
+                                assignee = (row.get('Assignee') or row.get('assignee') or 
+                                          row.get('assigned_to') or row.get('Assigned To') or 
+                                          'Unassigned')
+                                
+                                # Get priority with multiple possible column names
+                                priority = (row.get('Priority') or row.get('priority') or 
+                                          row.get('priority_name') or 'Unknown')
+                                
+                                # Create JIRA link if not provided
+                                link = row.get('link', f"https://onezelis.atlassian.net/browse/{key}")
+                                
+                                jira_dict[key] = {
+                                    'key': key,
+                                    'status': status,
+                                    'summary': summary,
+                                    'assignee': assignee,
+                                    'priority': priority,
+                                    'link': link,
+                                    'source': 'Uploaded CSV'
+                                }
+                                processed_count += 1
+                            else:
+                                logger.warning(f"Row {row_num}: Missing or empty issue key")
+                        except Exception as e:
+                            logger.error(f"Error processing row {row_num}: {e}")
+                            continue
+                
+                logger.info(f"Processed {processed_count} tickets from CSV")
                 return self.save_jira_data(jira_dict)
+            else:
+                logger.error(f"Unsupported file type: {file_type}. Only CSV is supported.")
+                return False
             
+        except Exception as e:
+            logger.error(f"Error processing JIRA file: {e}")
             return False
         except Exception as e:
             logger.error(f"Error processing JIRA file: {e}")
@@ -459,7 +627,7 @@ def dashboard():
 @app.route('/api/pr-stats')
 @rate_limit(max_requests=30, window=60)
 def pr_stats():
-    """API endpoint to get PR statistics"""
+    """API endpoint to get PR statistics (optimized for speed)"""
     try:
         logger.info("PR stats requested")
         start_time = time.time()
@@ -470,10 +638,19 @@ def pr_stats():
         
         logger.debug(f"Getting PR stats for repo={repo}, month={month}, labels={labels}")
         
+        # Create cache key for stats
+        stats_cache_key = f"stats_{repo}_{month}_{','.join(sorted(labels))}"
+        
+        # Check cache first - aggressive caching for stats
+        cached_data = get_cached_data()
+        if cached_data and cached_data.get('cache_key') == stats_cache_key:
+            logger.info(f"Returning CACHED stats (saved {time.time() - start_time:.2f}s)")
+            return jsonify(cached_data['data'])
+        
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
         
-        # Get all PRs
+        # Get all PRs (no comments for speed)
         all_prs = current_service.get_pull_requests(month=month)
         logger.debug(f"Got {len(all_prs)} total PRs")
         
@@ -500,10 +677,23 @@ def pr_stats():
         else:
             labeled_prs = []
         
+        # Get testing tickets count from JIRA
+        testing_count = 0
+        try:
+            for key, ticket in jira_service.jira_data.items():
+                status = ticket.get('status', '').strip()
+                # Only count tickets with exact "Testing" status
+                if status.lower() == 'testing':
+                    testing_count += 1
+                    logger.debug(f"Testing ticket found: {key} - Status: {ticket.get('status', '')}")
+        except Exception as e:
+            logger.warning(f"Error counting testing tickets: {e}")
+        
         stats = {
             'available_count': len(open_prs),
             'closed_count': len(closed_prs),
             'labeled_count': len(labeled_prs),
+            'testing_count': testing_count,
             'total_count': len(all_prs)
         }
         
@@ -533,6 +723,19 @@ def get_prs():
         
         logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}, sort={sort_by}, include_comments={include_comments}")
         
+        # Create cache key based on request parameters
+        cache_key_base = f"{pr_type}_{month}_{','.join(sorted(labels))}_{repo}_{sort_by}"
+        cache_key = f"{cache_key_base}_comments_{include_comments}"
+        logger.debug(f"Cache key: {cache_key}")
+        
+        # Check cache to improve performance
+        cached_data = get_cached_data()
+        if cached_data and cached_data.get('cache_key') == cache_key:
+            logger.info(f"Returning cached data for key: {cache_key} (saved {time.time() - start_time:.2f}s)")
+            return jsonify(cached_data['data'])
+        else:
+            logger.debug(f"Cache miss for key: {cache_key} (cached_key: {cached_data.get('cache_key') if cached_data else 'None'})")
+        
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
         
@@ -550,16 +753,53 @@ def get_prs():
             else:
                 prs = all_prs
             logger.debug(f"Final labeled PRs count: {len(prs)}")
+        elif pr_type == 'all':
+            # Get both open and closed PRs
+            open_prs = current_service.get_pull_requests(state='open', month=month)
+            closed_prs = current_service.get_pull_requests(state='closed', month=month)
+            prs = open_prs + closed_prs
+            logger.debug(f"Got {len(open_prs)} open + {len(closed_prs)} closed = {len(prs)} total PRs")
         else:
+            # Get PRs for specific state (open or closed)
             prs = current_service.get_pull_requests(state=pr_type, month=month)
     
         # Format PR data for frontend and optionally get last comment dates and review status
         formatted_prs = []
+        
+        # If comments are requested, fetch them only for open PRs (available/labeled)
+        comment_dates = {}
+        if include_comments and prs:
+            # Only fetch comments for open PRs - closed PRs don't need comment info
+            open_prs_for_comments = [pr for pr in prs if pr['state'] == 'open']
+            
+            if open_prs_for_comments:
+                logger.info(f"Fetching comments for {len(open_prs_for_comments)} open PRs in parallel...")
+                import concurrent.futures
+                
+                def fetch_comment_for_pr(pr):
+                    try:
+                        return pr['number'], current_service.get_pr_last_comment_date(pr['number'])
+                    except Exception as e:
+                        logger.error(f"Failed to fetch comment for PR #{pr['number']}: {e}")
+                        return pr['number'], None
+                
+                # Limit concurrent requests to avoid overwhelming the API
+                max_workers = min(3, len(open_prs_for_comments))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    comment_futures = [executor.submit(fetch_comment_for_pr, pr) for pr in open_prs_for_comments]
+                    for future in concurrent.futures.as_completed(comment_futures, timeout=60):
+                        try:
+                            pr_number, comment_date = future.result(timeout=10)
+                            comment_dates[pr_number] = comment_date
+                        except Exception as e:
+                            logger.error(f"Error fetching comment for PR: {e}")
+                            # Continue processing other PRs even if one fails
+            else:
+                logger.info("No open PRs found - skipping comment fetching")
+        
         for pr in prs:
-            # Get last comment date only if requested (this might take some time for many PRs)
-            last_comment_date = None
-            if include_comments:
-                last_comment_date = current_service.get_pr_last_comment_date(pr['number'])
+            # Get last comment date from parallel fetch results
+            last_comment_date = comment_dates.get(pr['number']) if include_comments else None
             
             # Get review status for open PRs
             review_status = None
@@ -567,11 +807,14 @@ def get_prs():
                 review_status = current_service.get_pr_review_status(pr['number'])
             
             # Extract and get JIRA ticket information
-            jira_keys = jira_service.extract_jira_keys(pr['title'] + ' ' + pr.get('body', ''))
+            # Handle None values properly for title and body
+            pr_title = pr.get('title') or ''
+            pr_body = pr.get('body') or ''
+            jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
             jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
             
             formatted_prs.append({
-                'title': pr['title'],
+                'title': pr_title,
                 'number': pr['number'],
                 'state': pr['state'],
                 'created_at': pr['created_at'],
@@ -580,8 +823,8 @@ def get_prs():
                 'review_status': review_status,
                 'jira_tickets': jira_tickets,
                 'html_url': pr['html_url'],
-                'user': pr['user']['login'],
-                'labels': [label['name'] for label in pr['labels']]
+                'user': pr.get('user', {}).get('login', 'Unknown'),
+                'labels': [label['name'] for label in pr.get('labels', [])]
             })
         
         # Sort PRs based on sort parameter
@@ -594,17 +837,46 @@ def get_prs():
         elif sort_by == 'most_recent':
             # Most recently updated first
             formatted_prs.sort(key=lambda x: x['updated_at'], reverse=True)
-        elif sort_by == 'last_comment':
-            # Most recent comment first (handle None values)
-            formatted_prs.sort(key=lambda x: x['last_comment_at'] or '1970-01-01T00:00:00Z', reverse=True)
         
         response_time = time.time() - start_time
         logger.info(f"PR details response time: {response_time:.2f}s, returned {len(formatted_prs)} PRs")
         
+        # Cache the result for faster future requests
+        cache_data = {
+            'cache_key': cache_key,
+            'data': formatted_prs
+        }
+        set_cache_data(cache_data)
+        logger.info(f"Cached data for key: {cache_key}")
+        
         return jsonify(formatted_prs)
     except Exception as e:
-        logger.error(f"Error getting PR details: {e}")
-        return jsonify({'error': 'Failed to fetch PR details'}), 500
+        logger.error(f"Error getting PR details: {e}", exc_info=True)
+        # Return more specific error information for debugging
+        error_details = {
+            'error': f'Failed to fetch PR details: {str(e)}',
+            'type': pr_type,
+            'repo': repo,
+            'details': str(e)
+        }
+        return jsonify(error_details), 500
+
+@app.route('/api/debug/closed-prs')
+def debug_closed_prs():
+    """Debug endpoint for testing closed PRs specifically"""
+    try:
+        logger.info("Testing closed PRs fetch...")
+        current_service = GitHubService(GITHUB_TOKEN, GITHUB_REPO)
+        closed_prs = current_service.get_pull_requests(state='closed')
+        logger.info(f"Successfully fetched {len(closed_prs)} closed PRs")
+        return jsonify({
+            'success': True,
+            'count': len(closed_prs),
+            'sample': closed_prs[:3] if closed_prs else []
+        })
+    except Exception as e:
+        logger.error(f"Error fetching closed PRs: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/available-months')
 def available_months():
@@ -827,11 +1099,75 @@ def get_jira_status():
         return jsonify({
             'loaded': len(jira_service.jira_data) > 0,
             'tickets_count': len(jira_service.jira_data),
-            'sample_tickets': list(jira_service.jira_data.keys())[:5] if jira_service.jira_data else []
+            'sample_tickets': list(jira_service.jira_data.keys())[:5] if jira_service.jira_data else [],
+            'uploaded_at': jira_service.upload_metadata.get('uploaded_at') if jira_service.upload_metadata else None,
+            'upload_metadata': jira_service.upload_metadata
         })
     except Exception as e:
         logger.error(f"Error getting JIRA status: {e}")
         return jsonify({'error': 'Failed to get JIRA status'}), 500
+
+@app.route('/api/jira/tickets')
+def get_jira_tickets():
+    """Get all uploaded JIRA tickets"""
+    try:
+        tickets = []
+        for key, ticket in jira_service.jira_data.items():
+            tickets.append({
+                'key': key,
+                'summary': ticket.get('summary', 'No summary'),
+                'status': ticket.get('status', 'Unknown'),
+                'status_category': ticket.get('status_category', 'Unknown'),
+                'assignee': ticket.get('assignee', 'Unassigned'),
+                'priority': ticket.get('priority', 'Unknown'),
+                'issue_type': ticket.get('issue_type', 'Unknown'),
+                'created': ticket.get('created', ''),
+                'updated': ticket.get('updated', ''),
+                'description': ticket.get('description', '')[:200] + '...' if ticket.get('description', '') else ''
+            })
+        
+        # Sort tickets by key
+        tickets.sort(key=lambda x: x['key'])
+        
+        return jsonify({
+            'tickets': tickets,
+            'total_count': len(tickets)
+        })
+    except Exception as e:
+        logger.error(f"Error getting JIRA tickets: {e}")
+        return jsonify({'error': 'Failed to get JIRA tickets'}), 500
+
+@app.route('/api/jira/testing-tickets')
+def get_testing_tickets():
+    """Get JIRA tickets that are under testing"""
+    try:
+        testing_tickets = []
+        for key, ticket in jira_service.jira_data.items():
+            status = ticket.get('status', '').strip()
+            # Only count tickets with exact "Testing" status
+            if status.lower() == 'testing':
+                testing_tickets.append({
+                    'key': key,
+                    'summary': ticket.get('summary', 'No summary'),
+                    'status': ticket.get('status', 'Unknown'),
+                    'status_category': jira_service.get_status_category(ticket.get('status', 'Unknown')),
+                    'assignee': ticket.get('assignee', 'Unassigned'),
+                    'priority': ticket.get('priority', 'Unknown'),
+                    'link': ticket.get('link', f"https://onezelis.atlassian.net/browse/{key}"),
+                    'created': ticket.get('created', ''),
+                    'updated': ticket.get('updated', '')
+                })
+        
+        # Sort tickets by key
+        testing_tickets.sort(key=lambda x: x['key'])
+        
+        return jsonify({
+            'tickets': testing_tickets,
+            'total_count': len(testing_tickets)
+        })
+    except Exception as e:
+        logger.error(f"Error getting testing tickets: {e}")
+        return jsonify({'error': 'Failed to get testing tickets'}), 500
 
 @app.route('/api/jira/clear', methods=['POST'])
 def clear_jira_data():
