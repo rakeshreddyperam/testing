@@ -31,3 +31,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# JIRA and uploads (sensitive data)
+Jira.csv
+jira_tickets_backup.json
+sample_statuses.csv
+uploads/
+*.csv
