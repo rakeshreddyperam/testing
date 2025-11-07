@@ -24,10 +24,16 @@
         .jira-status-card {
             border-left: 4px solid;
             transition: all 0.3s ease;
+            cursor: pointer;
         }
         .jira-status-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            background-color: rgba(0,123,255,0.05);
+        }
+        .jira-status-card:active {
+            transform: translateY(0px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         
         .loading {
@@ -334,7 +340,7 @@
             </div>
             
             <div class="col-md-2">
-                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('New')" style="cursor: pointer;">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('New')">
                     <div class="card-body text-center">
                         <i class="fas fa-plus-circle fa-2x text-primary mb-2"></i>
                         <h3 class="card-title text-primary" id="newCount">-</h3>
@@ -347,7 +353,7 @@
             </div>
             
             <div class="col-md-2">
-                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Work in progress')" style="cursor: pointer;">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Work in progress')">
                     <div class="card-body text-center">
                         <i class="fas fa-cogs fa-2x text-warning mb-2"></i>
                         <h3 class="card-title text-warning" id="workInProgressCount">-</h3>
@@ -360,7 +366,7 @@
             </div>
             
             <div class="col-md-2">
-                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Reviewing')" style="cursor: pointer;">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Reviewing')">
                     <div class="card-body text-center">
                         <i class="fas fa-eye fa-2x text-info mb-2"></i>
                         <h3 class="card-title text-info" id="reviewingCount">-</h3>
@@ -373,7 +379,7 @@
             </div>
             
             <div class="col-md-2">
-                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('On Hold')" style="cursor: pointer;">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('On Hold')">
                     <div class="card-body text-center">
                         <i class="fas fa-pause-circle fa-2x text-secondary mb-2"></i>
                         <h3 class="card-title text-secondary" id="onHoldCount">-</h3>
@@ -386,7 +392,7 @@
             </div>
             
             <div class="col-md-2">
-                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Work Complete')" style="cursor: pointer;">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Work Complete')">
                     <div class="card-body text-center">
                         <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
                         <h3 class="card-title text-success" id="workCompleteCount">-</h3>
@@ -399,7 +405,7 @@
             </div>
             
             <div class="col-md-2">
-                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Testing')" style="cursor: pointer;">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Testing')">
                     <div class="card-body text-center">
                         <i class="fas fa-vial fa-2x text-danger mb-2"></i>
                         <h3 class="card-title text-danger" id="testingJiraCount">-</h3>
@@ -466,7 +472,7 @@
             <div class="modal-dialog modal-xl">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">JIRA Tickets</h5>
+                        <h5 class="modal-title" id="jiraModalTitle">JIRA Tickets</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body" id="jiraModalBody">
@@ -1435,118 +1441,142 @@
         }
         
         function showJiraTicketsByStatus(status) {
-            const modal = new bootstrap.Modal(document.getElementById('jiraModal'));
-            const modalTitle = document.getElementById('jiraModalTitle');
-            const modalBody = document.getElementById('jiraModalBody');
-            
-            modalTitle.textContent = `JIRA Tickets - ${status}`;
-            
-            // Show loading
-            modalBody.innerHTML = `
-                <div class="text-center">
-                    <div class="spinner-border" role="status"></div>
-                    <p class="mt-2">Loading ${status} tickets...</p>
-                </div>
-            `;
-            
-            modal.show();
-            
-            // Fetch filtered tickets
-            fetch('/api/jira/tickets')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.tickets && Array.isArray(data.tickets)) {
-                        const filteredTickets = data.tickets.filter(ticket => ticket.status === status);
-                        
-                        if (filteredTickets.length === 0) {
-                            modalBody.innerHTML = `
-                                <div class="text-center">
-                                    <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                                    <h5 class="text-muted">No ${status} tickets found</h5>
-                                    <p class="text-muted">There are no JIRA tickets with "${status}" status in the uploaded data.</p>
+            try {
+                const modalElement = document.getElementById('jiraModal');
+                const modalTitle = document.getElementById('jiraModalTitle');
+                const modalBody = document.getElementById('jiraModalBody');
+                
+                if (!modalElement) {
+                    console.error('JIRA modal element not found');
+                    return;
+                }
+                
+                if (!modalTitle) {
+                    console.error('JIRA modal title element not found');
+                    return;
+                }
+                
+                if (!modalBody) {
+                    console.error('JIRA modal body element not found');
+                    return;
+                }
+                
+                const modal = new bootstrap.Modal(modalElement);
+                
+                // Set modal title
+                modalTitle.textContent = `JIRA Tickets - ${status}`;
+                
+                // Show loading
+                modalBody.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border" role="status"></div>
+                        <p class="mt-2">Loading ${status} tickets...</p>
+                    </div>
+                `;
+                
+                modal.show();
+                
+                // Fetch filtered tickets
+                fetch('/api/jira/tickets')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.tickets && Array.isArray(data.tickets)) {
+                            const filteredTickets = data.tickets.filter(ticket => ticket.status === status);
+                            
+                            if (filteredTickets.length === 0) {
+                                modalBody.innerHTML = `
+                                    <div class="text-center">
+                                        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                                        <h5 class="text-muted">No ${status} tickets found</h5>
+                                        <p class="text-muted">There are no JIRA tickets with "${status}" status in the uploaded data.</p>
+                                    </div>
+                                `;
+                                return;
+                            }
+                            
+                            // Build detailed table with ticket counts header
+                            let html = `
+                                <div class="mb-3">
+                                    <h6><i class="fas fa-ticket-alt text-primary"></i> ${status} Tickets: ${filteredTickets.length}</h6>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-hover">
+                                        <thead class="table-primary">
+                                            <tr>
+                                                <th>Key</th>
+                                                <th>Status</th>
+                                                <th>Summary</th>
+                                                <th>Assignee</th>
+                                                <th>Priority</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                            `;
+                            
+                            filteredTickets.forEach(ticket => {
+                                const statusColor = getStatusColor(ticket.status_category);
+                                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                                html += `
+                                    <tr>
+                                        <td>
+                                            <a href="${ticketLink}" target="_blank" class="text-decoration-none">
+                                                <strong>${ticket.key}</strong>
+                                                <i class="fas fa-external-link-alt ms-1"></i>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-${statusColor}" title="${ticket.status_category || ticket.status}">
+                                                ${ticket.status}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
+                                                ${ticket.summary}
+                                            </div>
+                                            ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
+                                        </td>
+                                        <td>${ticket.assignee || 'Unassigned'}</td>
+                                        <td>
+                                            <span class="badge bg-${getPriorityColor(ticket.priority)}">
+                                                ${ticket.priority || 'None'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            html += `
+                                        </tbody>
+                                    </table>
                                 </div>
                             `;
-                            return;
-                        }
-                        
-                        // Build detailed table with ticket counts header
-                        let html = `
-                            <div class="mb-3">
-                                <h6><i class="fas fa-ticket-alt text-primary"></i> ${status} Tickets: ${filteredTickets.length}</h6>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover">
-                                    <thead class="table-primary">
-                                        <tr>
-                                            <th>Key</th>
-                                            <th>Status</th>
-                                            <th>Summary</th>
-                                            <th>Assignee</th>
-                                            <th>Priority</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                        `;
-                        
-                        filteredTickets.forEach(ticket => {
-                            const statusColor = getStatusColor(ticket.status_category);
-                            const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
-                            html += `
-                                <tr>
-                                    <td>
-                                        <a href="${ticketLink}" target="_blank" class="text-decoration-none">
-                                            <strong>${ticket.key}</strong>
-                                            <i class="fas fa-external-link-alt ms-1"></i>
-                                        </a>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-${statusColor}" title="${ticket.status_category || ticket.status}">
-                                            ${ticket.status}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
-                                            ${ticket.summary}
-                                        </div>
-                                        ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
-                                    </td>
-                                    <td>${ticket.assignee || 'Unassigned'}</td>
-                                    <td>
-                                        <span class="badge bg-${getPriorityColor(ticket.priority)}">
-                                            ${ticket.priority || 'None'}
-                                        </span>
-                                    </td>
-                                </tr>
+                            
+                            modalBody.innerHTML = html;
+                        } else {
+                            modalBody.innerHTML = `
+                                <div class="text-center">
+                                    <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                                    <h5 class="text-muted">No JIRA tickets found</h5>
+                                    <p class="text-muted">Upload a JIRA export file to view tickets here.</p>
+                                </div>
                             `;
-                        });
-                        
-                        html += `
-                                    </tbody>
-                                </table>
-                            </div>
-                        `;
-                        
-                        modalBody.innerHTML = html;
-                    } else {
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching JIRA tickets:', error);
                         modalBody.innerHTML = `
                             <div class="text-center">
-                                <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
-                                <h5 class="text-muted">No JIRA tickets found</h5>
-                                <p class="text-muted">Upload a JIRA export file to view tickets here.</p>
+                                <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                                <h5 class="text-danger">Error Loading Tickets</h5>
+                                <p class="text-muted">Failed to load JIRA tickets: ${error.message}</p>
                             </div>
                         `;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading JIRA tickets:', error);
-                    modalBody.innerHTML = `
-                        <div class="text-center text-danger">
-                            <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                            <h5>Error Loading ${status} Tickets</h5>
-                            <p>Failed to load tickets. Please try again.</p>
-                        </div>
-                    `;
-                });
+                    });
+                
+            } catch (error) {
+                console.error('Error in showJiraTicketsByStatus:', error);
+                alert('Error: ' + error.message);
+            }
         }
         
         function viewJiraTickets() {
