@@ -546,6 +546,17 @@
                             <p>Loading JIRA tickets...</p>
                         </div>
                     </div>
+                    <div class="modal-footer pagination-controls" id="jiraModalFooter" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <button class="btn btn-sm btn-outline-secondary" id="prevJiraBtn" onclick="changeJiraPage(-1, event)">
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </button>
+                            <span id="jiraPageInfo" class="text-muted">Page 1 of 1</span>
+                            <button class="btn btn-sm btn-outline-secondary" id="nextJiraBtn" onclick="changeJiraPage(1, event)">
+                                Next <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -565,6 +576,11 @@
         let allReviewers = []; // Store all reviewers data
         let currentReviewersPage = 1;
         const reviewersPerPage = 6; // Show 6 reviewers per page
+        
+        // Pagination variables for JIRA tickets
+        let allJiraTickets = []; // Store all JIRA tickets data
+        let currentJiraPage = 1;
+        const jiraTicketsPerPage = 10; // Show 10 JIRA tickets per page
         
         // Debounce function to prevent too many rapid requests
         function debounce(func, wait) {
@@ -1280,6 +1296,175 @@
                 displayReviewersPage();
             }
         }
+
+        // JIRA Tickets Pagination Functions
+        function displayJiraTicketsPage() {
+            const modalBody = document.getElementById('jiraModalBody');
+            const startIndex = (currentJiraPage - 1) * jiraTicketsPerPage;
+            const endIndex = startIndex + jiraTicketsPerPage;
+            const ticketsToShow = allJiraTickets.slice(startIndex, endIndex);
+            
+            let html = `
+                <div class="mb-3">
+                    <h6><i class="fas fa-bug"></i> Total Tickets: ${allJiraTickets.length}</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Key</th>
+                                <th>Status</th>
+                                <th>Summary</th>
+                                <th>Assignee</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            ticketsToShow.forEach(ticket => {
+                const statusColor = getStatusColor(ticket.status_category);
+                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                html += `
+                    <tr>
+                        <td>
+                            <a href="${ticketLink}" target="_blank" class="text-decoration-none">
+                                <strong>${ticket.key}</strong>
+                                <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-${statusColor}" title="${ticket.status_category}">
+                                ${ticket.status}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
+                                ${ticket.summary}
+                            </div>
+                            ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
+                        </td>
+                        <td>${ticket.assignee}</td>
+                        <td>
+                            <span class="badge bg-${getPriorityColor(ticket.priority)}">
+                                ${ticket.priority}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            modalBody.innerHTML = html;
+            
+            // Update pagination controls
+            const totalPages = Math.ceil(allJiraTickets.length / jiraTicketsPerPage);
+            updateJiraPagination(totalPages);
+        }
+
+        function updateJiraPagination(totalPages) {
+            document.getElementById('jiraPageInfo').textContent = `Page ${currentJiraPage} of ${totalPages}`;
+            document.getElementById('prevJiraBtn').disabled = currentJiraPage === 1;
+            document.getElementById('nextJiraBtn').disabled = currentJiraPage === totalPages;
+        }
+
+        function changeJiraPage(direction, event) {
+            // Prevent event from bubbling up to parent elements
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            
+            const totalPages = Math.ceil(allJiraTickets.length / jiraTicketsPerPage);
+            const newPage = currentJiraPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentJiraPage = newPage;
+                // Check if we're in a filtered view (status-specific) or all tickets view
+                const modalTitle = document.getElementById('jiraModalTitle').textContent;
+                if (modalTitle.includes(' - ')) {
+                    const status = modalTitle.split(' - ')[1];
+                    displayJiraTicketsPageWithStatus(status);
+                } else {
+                    displayJiraTicketsPage();
+                }
+            }
+        }
+
+        // Function for displaying paginated tickets with status filter
+        function displayJiraTicketsPageWithStatus(status) {
+            const modalBody = document.getElementById('jiraModalBody');
+            const startIndex = (currentJiraPage - 1) * jiraTicketsPerPage;
+            const endIndex = startIndex + jiraTicketsPerPage;
+            const ticketsToShow = allJiraTickets.slice(startIndex, endIndex);
+            
+            let html = `
+                <div class="mb-3">
+                    <h6><i class="fas fa-ticket-alt text-primary"></i> ${status} Tickets: ${allJiraTickets.length}</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-primary">
+                            <tr>
+                                <th>Key</th>
+                                <th>Status</th>
+                                <th>Summary</th>
+                                <th>Assignee</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            ticketsToShow.forEach(ticket => {
+                const statusColor = getStatusColor(ticket.status_category);
+                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                html += `
+                    <tr>
+                        <td>
+                            <a href="${ticketLink}" target="_blank" class="text-decoration-none">
+                                <strong>${ticket.key}</strong>
+                                <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-${statusColor}" title="${ticket.status_category || ticket.status}">
+                                ${ticket.status}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
+                                ${ticket.summary}
+                            </div>
+                            ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
+                        </td>
+                        <td>${ticket.assignee || 'Unassigned'}</td>
+                        <td>
+                            <span class="badge bg-${getPriorityColor(ticket.priority)}">
+                                ${ticket.priority || 'None'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            modalBody.innerHTML = html;
+            
+            // Update pagination controls
+            const totalPages = Math.ceil(allJiraTickets.length / jiraTicketsPerPage);
+            updateJiraPagination(totalPages);
+        }
         
         function showReviewerPRs(reviewerName) {
             const modal = new bootstrap.Modal(document.getElementById('reviewerModal'));
@@ -1610,67 +1795,26 @@
                                         <p class="text-muted">There are no JIRA tickets with "${status}" status in the uploaded data.</p>
                                     </div>
                                 `;
+                                // Hide pagination for no results
+                                const paginationControls = document.getElementById('jiraModalFooter');
+                                if (paginationControls) {
+                                    paginationControls.style.display = 'none';
+                                }
                                 return;
                             }
                             
-                            // Build detailed table with ticket counts header
-                            let html = `
-                                <div class="mb-3">
-                                    <h6><i class="fas fa-ticket-alt text-primary"></i> ${status} Tickets: ${filteredTickets.length}</h6>
-                                </div>
-                                <div class="table-responsive">
-                                    <table class="table table-striped table-hover">
-                                        <thead class="table-primary">
-                                            <tr>
-                                                <th>Key</th>
-                                                <th>Status</th>
-                                                <th>Summary</th>
-                                                <th>Assignee</th>
-                                                <th>Priority</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                            `;
+                            // Store filtered tickets and reset to first page
+                            allJiraTickets = filteredTickets;
+                            currentJiraPage = 1;
+                            displayJiraTicketsPageWithStatus(status);
                             
-                            filteredTickets.forEach(ticket => {
-                                const statusColor = getStatusColor(ticket.status_category);
-                                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
-                                html += `
-                                    <tr>
-                                        <td>
-                                            <a href="${ticketLink}" target="_blank" class="text-decoration-none">
-                                                <strong>${ticket.key}</strong>
-                                                <i class="fas fa-external-link-alt ms-1"></i>
-                                            </a>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-${statusColor}" title="${ticket.status_category || ticket.status}">
-                                                ${ticket.status}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
-                                                ${ticket.summary}
-                                            </div>
-                                            ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
-                                        </td>
-                                        <td>${ticket.assignee || 'Unassigned'}</td>
-                                        <td>
-                                            <span class="badge bg-${getPriorityColor(ticket.priority)}">
-                                                ${ticket.priority || 'None'}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                `;
-                            });
-                            
-                            html += `
-                                        </tbody>
-                                    </table>
-                                </div>
-                            `;
-                            
-                            modalBody.innerHTML = html;
+                            // Show/hide pagination controls based on ticket count
+                            const paginationControls = document.getElementById('jiraModalFooter');
+                            if (paginationControls && filteredTickets.length > jiraTicketsPerPage) {
+                                paginationControls.style.display = 'block';
+                            } else if (paginationControls) {
+                                paginationControls.style.display = 'none';
+                            }
                         } else {
                             modalBody.innerHTML = `
                                 <div class="text-center">
@@ -1717,63 +1861,18 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.tickets && data.tickets.length > 0) {
-                        let html = `
-                            <div class="mb-3">
-                                <h6><i class="fas fa-bug"></i> Total Tickets: ${data.total_count}</h6>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>Key</th>
-                                            <th>Status</th>
-                                            <th>Summary</th>
-                                            <th>Assignee</th>
-                                            <th>Priority</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                        `;
+                        // Store all tickets and reset to first page
+                        allJiraTickets = data.tickets;
+                        currentJiraPage = 1;
+                        displayJiraTicketsPage();
                         
-                        data.tickets.forEach(ticket => {
-                            const statusColor = getStatusColor(ticket.status_category);
-                            const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
-                            html += `
-                                <tr>
-                                    <td>
-                                        <a href="${ticketLink}" target="_blank" class="text-decoration-none">
-                                            <strong>${ticket.key}</strong>
-                                            <i class="fas fa-external-link-alt ms-1"></i>
-                                        </a>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-${statusColor}" title="${ticket.status_category}">
-                                            ${ticket.status}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
-                                            ${ticket.summary}
-                                        </div>
-                                        ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
-                                    </td>
-                                    <td>${ticket.assignee}</td>
-                                    <td>
-                                        <span class="badge bg-${getPriorityColor(ticket.priority)}">
-                                            ${ticket.priority}
-                                        </span>
-                                    </td>
-                                </tr>
-                            `;
-                        });
-                        
-                        html += `
-                                    </tbody>
-                                </table>
-                            </div>
-                        `;
-                        
-                        modalBody.innerHTML = html;
+                        // Show pagination controls
+                        const paginationControls = document.getElementById('jiraModalFooter');
+                        if (paginationControls && data.tickets.length > jiraTicketsPerPage) {
+                            paginationControls.style.display = 'block';
+                        } else if (paginationControls) {
+                            paginationControls.style.display = 'none';
+                        }
                     } else {
                         modalBody.innerHTML = `
                             <div class="text-center">
@@ -1782,6 +1881,11 @@
                                 <p class="text-muted">Upload a JIRA export file to view tickets here.</p>
                             </div>
                         `;
+                        // Hide pagination if no tickets
+                        const paginationControls = document.getElementById('jiraModalFooter');
+                        if (paginationControls) {
+                            paginationControls.style.display = 'none';
+                        }
                     }
                 })
                 .catch(error => {
@@ -1793,6 +1897,11 @@
                             <p>Failed to load JIRA tickets. Please try again.</p>
                         </div>
                     `;
+                    // Hide pagination on error
+                    const paginationControls = document.getElementById('jiraModalFooter');
+                    if (paginationControls) {
+                        paginationControls.style.display = 'none';
+                    }
                 });
         }
         
