@@ -521,9 +521,21 @@
             } else if (allLabelsCheckbox && allLabelsCheckbox.checked && currentLabels.length > 0) {
                 toggle.textContent = 'All Labels';
             } else if (currentLabels.length === 1) {
-                toggle.textContent = currentLabels[0];
+                // Handle special "none" label display
+                const labelText = currentLabels[0] === 'none' ? 'None (No Labels)' : currentLabels[0];
+                toggle.textContent = labelText;
             } else {
-                toggle.textContent = `${currentLabels.length} labels selected`;
+                // Count how many are actual labels vs "none"
+                const hasNone = currentLabels.includes('none');
+                const actualLabels = currentLabels.filter(l => l !== 'none');
+                
+                if (hasNone && actualLabels.length === 0) {
+                    toggle.textContent = 'None (No Labels)';
+                } else if (hasNone && actualLabels.length > 0) {
+                    toggle.textContent = `None + ${actualLabels.length} labels`;
+                } else {
+                    toggle.textContent = `${currentLabels.length} labels selected`;
+                }
             }
         }
         
@@ -582,6 +594,25 @@
                     separator.className = 'dropdown-divider my-1';
                     menu.appendChild(separator);
                     
+                    // Add "None" option for PRs with no labels
+                    const noneItem = document.createElement('div');
+                    noneItem.className = 'checkbox-dropdown-item';
+                    const noneChecked = currentLabels.includes('none');
+                    if (noneChecked) {
+                        noneItem.classList.add('checked');
+                    }
+                    
+                    noneItem.innerHTML = `
+                        <input type="checkbox" id="label-none" value="none" ${noneChecked ? 'checked' : ''}>
+                        <label for="label-none" class="mb-0"><em>None (No Labels)</em></label>
+                    `;
+                    menu.appendChild(noneItem);
+                    
+                    // Add separator before actual labels
+                    const separator2 = document.createElement('hr');
+                    separator2.className = 'dropdown-divider my-1';
+                    menu.appendChild(separator2);
+                    
                     // Add label options
                     labels.forEach((label, index) => {
                         const item = document.createElement('div');
@@ -603,8 +634,9 @@
                         checkbox.addEventListener('change', function() {
                             if (this.id === 'label-all') {
                                 if (this.checked) {
-                                    // Select all labels
-                                    currentLabels = [...labels]; // Copy all available labels
+                                    // Select all labels (including None)
+                                    currentLabels = ['none', ...labels]; // Include none and all available labels
+                                    console.log('All Labels selected, currentLabels:', currentLabels);
                                     menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                                         if (cb.id !== 'label-all') {
                                             cb.checked = true;
@@ -614,6 +646,7 @@
                                 } else {
                                     // Clear all selections
                                     currentLabels = [];
+                                    console.log('All Labels deselected, currentLabels:', currentLabels);
                                     menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                                         if (cb.id !== 'label-all') {
                                             cb.checked = false;
@@ -624,19 +657,24 @@
                             } else {
                                 // Handle individual label selection
                                 const labelValue = this.value;
+                                console.log('Individual label clicked:', labelValue, 'checked:', this.checked);
+                                
                                 if (this.checked) {
                                     if (!currentLabels.includes(labelValue)) {
                                         currentLabels.push(labelValue);
                                     }
                                     this.closest('.checkbox-dropdown-item').classList.add('checked');
                                 } else {
-                                    currentLabels = currentLabels.filter(l => l !== labelValue);
+                                    currentLabels = currentLabels.filter(label => label !== labelValue);
                                     this.closest('.checkbox-dropdown-item').classList.remove('checked');
                                 }
                                 
-                                // Update "All Labels" checkbox based on selection state
+                                console.log('After individual selection, currentLabels:', currentLabels);
+                                
+                                // Update "All Labels" checkbox state
+                                const totalSelectableItems = labels.length + 1; // +1 for "none"
                                 const allCheckbox = menu.querySelector('#label-all');
-                                allCheckbox.checked = currentLabels.length === labels.length;
+                                allCheckbox.checked = currentLabels.length === totalSelectableItems;
                             }
                             
                             updateLabelDropdownText();
@@ -739,6 +777,9 @@
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             currentLabels.forEach(label => params.append('labels', label));
+            
+            console.log('Loading stats with currentLabels:', currentLabels);
+            console.log('Stats URL:', `/api/pr-stats?${params}`);
             
             fetch(`/api/pr-stats?${params}`)
                 .then(response => response.json())
@@ -1317,7 +1358,6 @@
                                             <th>Summary</th>
                                             <th>Assignee</th>
                                             <th>Priority</th>
-                                            <th>Type</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1351,7 +1391,6 @@
                                             ${ticket.priority}
                                         </span>
                                     </td>
-                                    <td>${ticket.issue_type}</td>
                                 </tr>
                             `;
                         });

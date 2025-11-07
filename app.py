@@ -666,10 +666,31 @@ def pr_stats():
         if labels:
             # Filter open PRs by labels instead of getting all labeled PRs
             labeled_prs = []
+            added_pr_numbers = set()  # Track added PRs to avoid duplicates
+            
             for pr in open_prs:
                 pr_labels = [label['name'] for label in pr['labels']]
-                if any(label.lower() in [pl.lower() for pl in pr_labels] for label in labels):
+                pr_number = pr['number']
+                
+                # Skip if already added
+                if pr_number in added_pr_numbers:
+                    continue
+                
+                # Check if "none" is in the filter (for PRs with no labels)
+                if 'none' in labels and not pr_labels:
                     labeled_prs.append(pr)
+                    added_pr_numbers.add(pr_number)
+                    logger.debug(f"Including unlabeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
+                    continue
+                
+                # Check for specific labels (excluding "none")
+                other_labels = [l for l in labels if l != 'none']
+                if other_labels and pr_labels:
+                    if any(label.lower() in [pl.lower() for pl in pr_labels] for label in other_labels):
+                        labeled_prs.append(pr)
+                        added_pr_numbers.add(pr_number)
+                        logger.debug(f"Including labeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
+            
             logger.debug(f"Found {len(labeled_prs)} labeled open PRs")
             # Debug: print the states of labeled PRs
             for pr in labeled_prs:
@@ -745,11 +766,30 @@ def get_prs():
             logger.debug(f"Got {len(all_prs)} open PRs for label filtering")
             prs = []
             if labels:
+                added_pr_numbers = set()  # Track added PRs to avoid duplicates
+                
                 for pr in all_prs:
                     pr_labels = [label['name'] for label in pr['labels']]
-                    if any(label.lower() in [pl.lower() for pl in pr_labels] for label in labels):
+                    pr_number = pr['number']
+                    
+                    # Skip if already added
+                    if pr_number in added_pr_numbers:
+                        continue
+                    
+                    # Check if "none" is in the filter (for PRs with no labels)
+                    if 'none' in labels and not pr_labels:
                         prs.append(pr)
-                        logger.debug(f"Including labeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
+                        added_pr_numbers.add(pr_number)
+                        logger.debug(f"Including unlabeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
+                        continue
+                    
+                    # Check for specific labels (excluding "none")
+                    other_labels = [l for l in labels if l != 'none']
+                    if other_labels and pr_labels:
+                        if any(label.lower() in [pl.lower() for pl in pr_labels] for label in other_labels):
+                            prs.append(pr)
+                            added_pr_numbers.add(pr_number)
+                            logger.debug(f"Including labeled PR #{pr['number']}: {pr['title']} - State: {pr['state']}")
             else:
                 prs = all_prs
             logger.debug(f"Final labeled PRs count: {len(prs)}")
