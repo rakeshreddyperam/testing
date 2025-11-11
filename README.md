@@ -1,19 +1,37 @@
-<<<<<<< HEAD
-# GitHub PR Dashboard
+# GitHub PR Dashboard with JIRA Integration
 
-A Python Flask web application for monitoring GitHub Pull Requests with interactive dashboard cards and filtering capabilities.
+A comprehensive Python Flask web application for monitoring GitHub Pull Requests and JIRA tickets with an interactive dashboard, advanced filtering, and real-time analytics.
 
 ## Features
 
-- **Dashboard Cards**: Display PR statistics with visual cards showing:
-  - Available (open) PRs count
-  - PRs filtered by label criteria
-  - Closed PRs count
-- **Interactive Cards**: Click any card to view detailed PR lists
-- **Month-based Filtering**: Filter all data by specific months
-- **Label Filtering**: Filter PRs by specific labels
-- **Responsive Design**: Bootstrap-based responsive UI
-- **Real-time Data**: Fetches live data from GitHub API
+### GitHub Integration
+- **Available PRs Card**: Display count and list of open pull requests with pagination
+- **Labeled PRs Card**: Filter PRs by specific labels including "None" for unlabeled PRs  
+- **Closed PRs Card**: Show count and detailed list of closed pull requests
+- **PR Reviewers Card**: Track reviewer workload with pagination (6 reviewers per page)
+- **Multi-Repository Support**: Switch between different GitHub repositories
+- **Advanced Filtering**: Filter by month, labels, and search within PR lists
+
+### JIRA Integration
+- **JIRA Status Cards**: Six interactive cards showing ticket counts by status:
+  - New
+  - Work in progress
+  - Reviewing
+  - On Hold
+  - Work Complete
+  - Testing
+- **Clickable Status Cards**: Click any JIRA status card to view filtered tickets
+- **JIRA Ticket Pagination**: Browse tickets with 10 items per page
+- **CSV/Excel Upload**: Upload JIRA export files for data processing
+- **Selective JIRA Refresh**: Refresh only JIRA data without affecting PR stats
+
+### Performance & User Experience
+- **Parallel Processing**: ThreadPoolExecutor for concurrent API calls
+- **Intelligent Caching**: 15-minute caching system for optimal performance
+- **Responsive Design**: Bootstrap-based mobile-friendly interface
+- **Real-time Updates**: Live data fetching with loading indicators
+- **Compact UI**: Space-efficient card designs for better visibility
+- **Search Functionality**: Quick search within PR and ticket lists
 
 ## Setup Instructions
 
@@ -41,12 +59,23 @@ A Python Flask web application for monitoring GitHub Pull Requests with interact
    ```
 
 4. **Configure environment variables**
-   - Copy `.env.example` to `.env`
-   - Edit `.env` and add your GitHub configuration:
+   - Create `.env` file in project root
+   - Add your GitHub configuration:
    ```
    GITHUB_TOKEN=your_github_personal_access_token_here
    GITHUB_REPO=owner/repository-name
    ```
+
+### JIRA Setup
+
+1. **Export JIRA Data**:
+   - Export tickets from JIRA as CSV or Excel file
+   - Include columns: Key, Summary, Status, Assignee, Priority, Created, Status Category
+   
+2. **Upload to Dashboard**:
+   - Use the JIRA upload button on the dashboard
+   - Select your exported CSV/Excel file
+   - Data will be processed and displayed immediately
 
 ### Running the Application
 
@@ -96,15 +125,26 @@ http://localhost:5000
 
 ### Dashboard Cards
 
-- **Available PRs**: Shows count of open pull requests
-- **Labeled PRs**: Shows count of PRs matching selected label criteria
-- **Closed PRs**: Shows count of closed pull requests
+#### GitHub PR Cards:
+- **Available PRs**: Shows open pull requests with reviewer assignments
+- **Labeled PRs**: Filter PRs by labels (supports "None" for unlabeled)
+- **Closed PRs**: Historical view of closed pull requests  
+- **PR Reviewers**: Team workload distribution with pagination
 
-### Filtering
+#### JIRA Status Cards:
+- **Six Status Cards**: Real-time counts for each JIRA status
+- **Interactive**: Click cards to view filtered ticket lists
+- **Pagination**: Navigate through large ticket datasets
+- **Direct Links**: Jump to JIRA tickets with external links
 
-- **Month Filter**: Select a specific month to filter all data
-- **Label Filter**: Enter comma-separated labels to filter PRs
-- **Combined Filtering**: Use both month and label filters together
+### Advanced Features
+
+- **Month Filtering**: Filter all data by specific months
+- **Multi-Label Filtering**: Complex label combinations with dropdown
+- **Search**: Find specific PRs or tickets quickly
+- **Pagination**: Handle large datasets efficiently
+- **Responsive Design**: Works on desktop, tablet, and mobile
+- **Real-time Refresh**: Update data without page reload
 
 ### Viewing Details
 
@@ -118,10 +158,17 @@ http://localhost:5000
 
 ## API Endpoints
 
+### GitHub APIs
 - `GET /` - Main dashboard page
-- `GET /api/pr-stats` - Get PR statistics (supports month and labels params)
-- `GET /api/prs` - Get detailed PR list (supports type, month, and labels params)
-- `GET /api/available-months` - Get list of available months from PRs
+- `GET /api/pr-stats` - PR statistics with filtering
+- `GET /api/available-months` - Available months for filtering  
+- `GET /api/available-labels` - All PR labels for dropdown
+- `GET /api/reviewer-stats` - Reviewer workload statistics
+
+### JIRA APIs
+- `POST /upload/jira` - Upload JIRA export file
+- `GET /api/jira/status` - JIRA status counts
+- `GET /api/jira/tickets` - All JIRA tickets with filtering
 
 ## Development
 
@@ -129,16 +176,19 @@ http://localhost:5000
 
 ```
 .
-├── app.py                 # Main Flask application
+├── app.py                 # Main Flask application with GitHub & JIRA services
 ├── templates/
-│   └── dashboard.html     # Dashboard UI template
-├── static/               # Static files (currently empty)
+│   └── dashboard.html     # Comprehensive dashboard UI with all features
+├── static/
+│   └── uploads/          # JIRA file uploads directory
 ├── requirements.txt      # Python dependencies
-├── .env.example         # Environment variables template
+├── .env                 # Environment configuration
 ├── .vscode/
 │   ├── launch.json      # VS Code debug configuration
-│   └── tasks.json       # VS Code tasks
-└── README.md           # This file
+│   └── tasks.json       # VS Code build tasks
+├── .github/
+│   └── copilot-instructions.md  # Development guidelines
+└── README.md           # This documentation
 ```
 
 ### Technologies Used
@@ -172,9 +222,22 @@ http://localhost:5000
   - Repository accessibility
   - Console for detailed error messages
 
+## Performance Optimizations
+
+- **Parallel API Calls**: Fetch PR comments concurrently using ThreadPoolExecutor
+- **Intelligent Caching**: Cache API responses for 15 minutes with smart invalidation
+- **Selective Refresh**: JIRA-only refresh without affecting GitHub data
+- **Pagination**: Limit displayed items (6 reviewers, 10 tickets per page)
+- **Optimized UI**: Compact card designs and efficient event handling
+
+## Current Capabilities
+
+- **GitHub PRs**: Full management of 18+ PRs with filtering and pagination
+- **JIRA Tickets**: Processing and display of 38+ tickets across 6 statuses
+- **Multi-Repository**: Support for switching between repositories
+- **Real-time Data**: Live updates with intelligent caching
+- **Mobile Ready**: Responsive design for all device types
+
 ## License
 
-This project is for demonstration purposes. Please ensure compliance with GitHub's API terms of service.
-=======
-# testing
->>>>>>> 2e757797419a55de53922c3967321397240bd3d7
+This project is for demonstration purposes. Please ensure compliance with GitHub's API terms of service and JIRA data usage policies.
