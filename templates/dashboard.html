@@ -399,6 +399,19 @@
                     </div>
                 </div>
             </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Cancelled')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-times-circle fa-xl text-secondary mb-2"></i>
+                        <h3 class="card-title text-secondary mb-1" id="cancelledCount">-</h3>
+                        <p class="card-text mb-0">Cancelled</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <!-- Reviewers and JIRA Cards Side by Side -->
@@ -1705,15 +1718,28 @@
                         'Reviewing': 0,
                         'On Hold': 0,
                         'Work Complete': 0,
-                        'Testing': 0
+                        'Testing': 0,
+                        'Cancelled': 0
                     };
+                    
+                    // Debug: Log all unique statuses to help troubleshoot
+                    const uniqueStatuses = [...new Set(data.tickets.map(ticket => ticket.status))];
+                    console.log('All unique JIRA statuses found:', uniqueStatuses);
                     
                     // Count tickets by status
                     if (data.tickets && Array.isArray(data.tickets)) {
                         data.tickets.forEach(ticket => {
                             const status = ticket.status;
+                            const statusLower = status ? status.toLowerCase() : '';
+                            
                             if (statusCounts.hasOwnProperty(status)) {
                                 statusCounts[status]++;
+                            } else if (status === 'Done') {
+                                // Count 'Done' tickets as 'Work Complete'
+                                statusCounts['Work Complete']++;
+                            } else if (statusLower.includes('cancel') || statusLower.includes('cancel')) {
+                                // Handle various cancelled status formats (Cancelled, Canceled, etc.)
+                                statusCounts['Cancelled']++;
                             }
                         });
                     }
@@ -1725,6 +1751,7 @@
                     document.getElementById('onHoldCount').textContent = statusCounts['On Hold'];
                     document.getElementById('workCompleteCount').textContent = statusCounts['Work Complete'];
                     document.getElementById('testingJiraCount').textContent = statusCounts['Testing'];
+                    document.getElementById('cancelledCount').textContent = statusCounts['Cancelled'];
                     
                     // Hide loading indicators
                     document.querySelectorAll('.jira-status-card .loading').forEach(loader => {
@@ -1785,7 +1812,21 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.tickets && Array.isArray(data.tickets)) {
-                            const filteredTickets = data.tickets.filter(ticket => ticket.status === status);
+                            let filteredTickets;
+                            if (status === 'Work Complete') {
+                                // Include both 'Work Complete' and 'Done' statuses
+                                filteredTickets = data.tickets.filter(ticket => 
+                                    ticket.status === 'Work Complete' || ticket.status === 'Done'
+                                );
+                            } else if (status === 'Cancelled') {
+                                // Include various cancelled status formats
+                                filteredTickets = data.tickets.filter(ticket => {
+                                    const ticketStatus = ticket.status ? ticket.status.toLowerCase() : '';
+                                    return ticketStatus.includes('cancel');
+                                });
+                            } else {
+                                filteredTickets = data.tickets.filter(ticket => ticket.status === status);
+                            }
                             
                             if (filteredTickets.length === 0) {
                                 modalBody.innerHTML = `
