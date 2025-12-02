@@ -239,6 +239,10 @@
                     <i class="fab fa-github me-1"></i>Repository:
                 </label>
                 <select id="repoFilter" class="form-select">
+                    <option value="Zelis-Data-Intelligence-ZDI/zdi-data-admin" selected>Zelis-Data-Intelligence-ZDI/zdi-data-admin</option>
+                    <option value="Zelis-Data-Intelligence-ZDI/Address-Service">Zelis-Data-Intelligence-ZDI/Address-Service</option>
+                    <option value="Zelis-Data-Intelligence-ZDI/smrf-hub">Zelis-Data-Intelligence-ZDI/smrf-hub</option>
+                    <option value="Zelis-Data-Intelligence-ZDI/astro-zse">Zelis-Data-Intelligence-ZDI/astro-zse</option>
                     <option value="rakeshreddyperam/testing">rakeshreddyperam/testing</option>
                     <option value="microsoft/vscode">microsoft/vscode</option>
                     <option value="facebook/react">facebook/react</option>
@@ -523,6 +527,29 @@
                             <p>Loading PRs...</p>
                         </div>
                     </div>
+                    <div class="modal-footer pagination-controls" id="prModalFooter" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="pagination-info">
+                                <small class="text-muted">
+                                    Page <span id="prCurrentPage">1</span> of <span id="prTotalPages">1</span> 
+                                    (Showing <span id="prShowingCount">0</span> of <span id="prTotalCount">0</span> PRs)
+                                </small>
+                            </div>
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0">
+                                    <li class="page-item" id="prPrevPage">
+                                        <a class="page-link" href="#" onclick="changePRPage(currentPRPage - 1)">Previous</a>
+                                    </li>
+                                    <li class="page-item active" id="prPageNum">
+                                        <a class="page-link" href="#" id="prCurrentPageLink">1</a>
+                                    </li>
+                                    <li class="page-item" id="prNextPage">
+                                        <a class="page-link" href="#" onclick="changePRPage(currentPRPage + 1)">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -581,7 +608,7 @@
     <script>
         let currentMonth = '';
         let currentLabels = [];
-        let currentRepo = 'rakeshreddyperam/testing';
+        let currentRepo = 'Zelis-Data-Intelligence-ZDI/zdi-data-admin';
         let requestQueue = new Map(); // Prevent duplicate requests
         let prModalInstance = null; // Store modal instance
         
@@ -594,6 +621,11 @@
         let allJiraTickets = []; // Store all JIRA tickets data
         let currentJiraPage = 1;
         const jiraTicketsPerPage = 10; // Show 10 JIRA tickets per page
+        
+        // Pagination variables for PR lists
+        let allPRs = []; // Store all PRs data
+        let currentPRPage = 1;
+        const prsPerPage = 6; // Show 6 PRs per page
         
         // Debounce function to prevent too many rapid requests
         function debounce(func, wait) {
@@ -937,6 +969,11 @@
         function loadStats() {
             const requestKey = 'loadStats';
             
+            // Show loading state immediately for better UX
+            document.getElementById('availableCount').textContent = '-';
+            document.getElementById('labeledCount').textContent = '-';
+            document.getElementById('closedCount').textContent = '-';
+            
             // Prevent duplicate requests
             if (requestQueue.has(requestKey)) {
                 return;
@@ -953,7 +990,9 @@
             console.log('Loading stats with currentLabels:', currentLabels);
             console.log('Stats URL:', `/api/pr-stats?${params}`);
             
-            fetch(`/api/pr-stats?${params}`)
+            // Add cache busting to ensure fresh data
+            const cacheBuster = Date.now();
+            fetch(`/api/pr-stats?${params}&_cb=${cacheBuster}`)
                 .then(response => response.json())
                 .then(stats => {
                     document.getElementById('availableCount').textContent = stats.available_count;
@@ -1035,11 +1074,38 @@
                 .then(prs => {
                     if (prs.length === 0) {
                         modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
+                        document.getElementById('prModalFooter').style.display = 'none';
                         return;
                     }
                     
-                    let html = '';
-                    prs.forEach(pr => {
+                    // Store all PRs for pagination
+                    allPRs = prs;
+                    currentPRPage = 1;
+                    
+                    // Display paginated PRs
+                    displayPaginatedPRs();
+                })
+                .catch(error => {
+                    console.error('Error loading PRs:', error);
+                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
+                    document.getElementById('prModalFooter').style.display = 'none';
+                });
+        }
+        
+        function displayPaginatedPRs() {
+            const modalBody = document.getElementById('modalBody');
+            const startIndex = (currentPRPage - 1) * prsPerPage;
+            const endIndex = startIndex + prsPerPage;
+            const paginatedPRs = allPRs.slice(startIndex, endIndex);
+            
+            if (paginatedPRs.length === 0) {
+                modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
+                document.getElementById('prModalFooter').style.display = 'none';
+                return;
+            }
+            
+            let html = '';
+            paginatedPRs.forEach(pr => {
                         const createdDate = new Date(pr.created_at).toLocaleDateString();
                         const updatedDate = new Date(pr.updated_at).toLocaleDateString();
                         
@@ -1166,19 +1232,67 @@
                     });
                     
                     modalBody.innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error loading PR details:', error);
-                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
-                });
+                    
+                    // Show pagination controls
+                    const totalPages = Math.ceil(allPRs.length / prsPerPage);
+                    if (totalPages > 1) {
+                        document.getElementById('prModalFooter').style.display = 'block';
+                        updatePRPagination(totalPages);
+                    } else {
+                        document.getElementById('prModalFooter').style.display = 'none';
+                    }
+                }
             
             // Add event listener for sort change
             document.getElementById('sortSelect').onchange = function() {
                 showPRDetails(type);
             };
+        
+        // PR Pagination Functions
+        function changePRPage(page) {
+            const totalPages = Math.ceil(allPRs.length / prsPerPage);
+            if (page >= 1 && page <= totalPages) {
+                currentPRPage = page;
+                displayPaginatedPRs();
+            }
         }
         
-
+        function updatePRPagination(totalPages) {
+            const currentPageSpan = document.getElementById('prCurrentPage');
+            const totalPagesSpan = document.getElementById('prTotalPages');
+            const showingCountSpan = document.getElementById('prShowingCount');
+            const totalCountSpan = document.getElementById('prTotalCount');
+            const prevPageBtn = document.getElementById('prPrevPage');
+            const nextPageBtn = document.getElementById('prNextPage');
+            const currentPageLink = document.getElementById('prCurrentPageLink');
+            
+            // Update page info
+            currentPageSpan.textContent = currentPRPage;
+            totalPagesSpan.textContent = totalPages;
+            
+            // Update showing count
+            const startIndex = (currentPRPage - 1) * prsPerPage;
+            const endIndex = Math.min(startIndex + prsPerPage, allPRs.length);
+            showingCountSpan.textContent = endIndex - startIndex;
+            totalCountSpan.textContent = allPRs.length;
+            
+            // Update pagination controls
+            currentPageLink.textContent = currentPRPage;
+            
+            // Enable/disable navigation buttons
+            if (currentPRPage === 1) {
+                prevPageBtn.classList.add('disabled');
+            } else {
+                prevPageBtn.classList.remove('disabled');
+            }
+            
+            if (currentPRPage === totalPages) {
+                nextPageBtn.classList.add('disabled');
+            } else {
+                nextPageBtn.classList.remove('disabled');
+            }
+        }
+        
         
         function loadReviewerStats() {
             const reviewersList = document.getElementById('reviewersList');

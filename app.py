@@ -32,7 +32,7 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 pr_cache = {
     'data': None,
     'timestamp': None,
-    'ttl': 900  # 15 minutes cache for much better performance
+    'ttl': 300  # 5 minutes cache for balanced performance and freshness
 }
 
 # Create uploads directory if it doesn't exist
@@ -57,7 +57,7 @@ def is_cache_valid():
     return time.time() - pr_cache['timestamp'] < pr_cache['ttl']
 
 def get_cached_data():
-    """Get cached data if valid"""
+    """Get cached data if valid - RE-ENABLED FOR PERFORMANCE"""
     if is_cache_valid():
         return pr_cache['data']
     return None
@@ -120,7 +120,7 @@ class GitHubService:
             self.headers['Authorization'] = f'token {token}'
     
     def get_pull_requests(self, state='all', labels=None, month=None):
-        """Fetch pull requests from GitHub API"""
+        """Fetch pull requests from GitHub API with proper pagination"""
         url = f'{BASE_URL}/repos/{self.repo}/pulls'
         
         # Handle state parameter correctly
@@ -134,59 +134,80 @@ class GitHubService:
         
         params = {
             'state': api_state,
-            'per_page': 100,
+            'per_page': 100,  # Maximum per page
             'sort': 'created',
             'direction': 'desc'
         }
         
+        all_prs = []
+        page = 1
+        max_pages = 5  # Limit to prevent infinite loops
+        
         try:
-            logger.debug(f"Fetching PRs from {url} with params {params}")
-            response = requests.get(url, headers=self.headers, params=params, timeout=30)
+            while page <= max_pages:
+                current_params = params.copy()
+                current_params['page'] = page
+                
+                logger.debug(f"Fetching PRs page {page} from {url} with params {current_params}")
+                response = requests.get(url, headers=self.headers, params=current_params, timeout=30)
+                
+                logger.debug(f"Response status: {response.status_code}")
+                
+                # Enhanced error handling for different HTTP status codes
+                if response.status_code == 403:
+                    error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                    if 'rate limit' in error_data.get('message', '').lower():
+                        logger.error("Rate limit exceeded. Consider using a personal access token for higher limits.")
+                    else:
+                        logger.error("Authentication required or insufficient permissions. Check your GitHub token.")
+                    return self._get_mock_data(state, labels, month)
+                elif response.status_code == 404:
+                    logger.error(f"Repository '{self.repo}' not found or you don't have access. Check repository name and permissions.")
+                    return self._get_mock_data(state, labels, month)
+                elif response.status_code == 401:
+                    logger.error("Invalid GitHub token. Please check your GITHUB_TOKEN environment variable.")
+                    return self._get_mock_data(state, labels, month)
+                elif response.status_code != 200:
+                    logger.error(f"API error {response.status_code}: {response.text}")
+                    return self._get_mock_data(state, labels, month)
+                
+                prs = response.json()
+                logger.debug(f"Retrieved {len(prs)} PRs from API page {page}")
+                
+                if not prs:  # No more PRs, break the loop
+                    break
+                    
+                all_prs.extend(prs)
+                
+                # If we got less than per_page PRs, we're on the last page
+                if len(prs) < params['per_page']:
+                    break
+                    
+                page += 1
             
-            logger.debug(f"Response status: {response.status_code}")
-            
-            # Enhanced error handling for different HTTP status codes
-            if response.status_code == 403:
-                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
-                if 'rate limit' in error_data.get('message', '').lower():
-                    logger.error("Rate limit exceeded. Consider using a personal access token for higher limits.")
-                else:
-                    logger.error("Authentication required or insufficient permissions. Check your GitHub token.")
-                return self._get_mock_data(state, labels, month)
-            elif response.status_code == 404:
-                logger.error(f"Repository '{self.repo}' not found or you don't have access. Check repository name and permissions.")
-                return self._get_mock_data(state, labels, month)
-            elif response.status_code == 401:
-                logger.error("Invalid GitHub token. Please check your GITHUB_TOKEN environment variable.")
-                return self._get_mock_data(state, labels, month)
-            elif response.status_code != 200:
-                logger.error(f"API error {response.status_code}: {response.text}")
-                return self._get_mock_data(state, labels, month)
-            
-            prs = response.json()
-            logger.debug(f"Retrieved {len(prs)} PRs from API")
+            logger.info(f"PAGINATION DEBUG - Total PRs fetched across all pages: {len(all_prs)} for state='{state}'")
             
             # Filter by month if specified
             if month:
                 filtered_prs = []
-                for pr in prs:
+                for pr in all_prs:
                     created_date = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
                     if created_date.strftime('%Y-%m') == month:
                         filtered_prs.append(pr)
-                prs = filtered_prs
-                print(f"DEBUG: After month filter ({month}): {len(prs)} PRs")
+                all_prs = filtered_prs
+                logger.debug(f"After month filter ({month}): {len(all_prs)} PRs")
             
             # Filter by labels if specified
             if labels:
                 filtered_prs = []
-                for pr in prs:
+                for pr in all_prs:
                     pr_labels = [label['name'] for label in pr['labels']]
                     if any(label.lower() in [pl.lower() for pl in pr_labels] for label in labels):
                         filtered_prs.append(pr)
-                prs = filtered_prs
-                print(f"DEBUG: After label filter ({labels}): {len(prs)} PRs")
+                all_prs = filtered_prs
+                logger.debug(f"After label filter ({labels}): {len(all_prs)} PRs")
             
-            return prs
+            return all_prs
         except requests.exceptions.RequestException as e:
             print(f"Error fetching PRs: {e}. Using mock data.")
             return self._get_mock_data(state, labels, month)
@@ -636,6 +657,7 @@ def pr_stats():
         labels = request.args.getlist('labels')
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
         
+        logger.info(f"DEBUG - PR STATS REQUEST - repo={repo}, month={month}, labels={labels}")
         logger.debug(f"Getting PR stats for repo={repo}, month={month}, labels={labels}")
         
         # Create cache key for stats
@@ -650,25 +672,107 @@ def pr_stats():
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
         
-        # Get all PRs (no comments for speed)
-        all_prs = current_service.get_pull_requests(month=month)
-        logger.debug(f"Got {len(all_prs)} total PRs")
+        # Use same logic as PR details endpoint - force fresh API call
+        logger.info(f"PR STATS DEBUG - Making DIRECT GitHub API call for open PRs")
         
-        # Get open PRs
-        open_prs = [pr for pr in all_prs if pr['state'] == 'open']
-        logger.debug(f"Found {len(open_prs)} open PRs")
+        # Make direct API call with pagination
+        import requests
+        api_url = f'https://api.github.com/repos/{repo}/pulls'
+        headers = {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': f'token {GITHUB_TOKEN}',
+            'User-Agent': 'GitHub-PR-Dashboard'
+        }
         
-        # Get closed PRs
-        closed_prs = [pr for pr in all_prs if pr['state'] == 'closed']
-        logger.debug(f"Found {len(closed_prs)} closed PRs")
+        all_open_prs = []
+        page = 1
+        
+        while page <= 2:  # Max 2 pages to get recent PRs (200 open PRs max)
+            params = {
+                'state': 'open',
+                'per_page': 100,
+                'page': page,
+                'sort': 'created',
+                'direction': 'desc'
+            }
+            
+            response = requests.get(api_url, headers=headers, params=params, timeout=30)
+            if response.status_code == 200:
+                prs = response.json()
+                if not prs:
+                    break
+                all_open_prs.extend(prs)
+                logger.info(f"PR STATS DEBUG - Page {page}: Got {len(prs)} PRs")
+                if len(prs) < 100:
+                    break
+                page += 1
+            else:
+                logger.error(f"GitHub API error: {response.status_code}")
+                break
+        
+        # Apply month filtering if specified
+        if month:
+            filtered_open_prs = []
+            for pr in all_open_prs:
+                created_date = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+                if created_date.strftime('%Y-%m') == month:
+                    filtered_open_prs.append(pr)
+            open_prs = filtered_open_prs
+            logger.info(f"DEBUG - After month filter ({month}): {len(open_prs)} open PRs")
+        else:
+            open_prs = all_open_prs
+        
+        logger.info(f"PR STATS DEBUG - FINAL OPEN PR COUNT: {len(open_prs)}")
+        
+        # Get closed PRs with same logic - increase pagination for accurate count
+        all_closed_prs = []
+        page = 1
+        
+        while page <= 3:  # Max 3 pages for closed PRs (300 closed PRs max)
+            params = {
+                'state': 'closed',
+                'per_page': 100,
+                'page': page,
+                'sort': 'created',
+                'direction': 'desc'
+            }
+            
+            response = requests.get(api_url, headers=headers, params=params, timeout=30)
+            if response.status_code == 200:
+                prs = response.json()
+                if not prs:
+                    break
+                all_closed_prs.extend(prs)
+                logger.info(f"PR STATS DEBUG - Closed PRs Page {page}: Got {len(prs)} PRs")
+                if len(prs) < 100:
+                    break
+                page += 1
+            else:
+                logger.error(f"GitHub API error for closed PRs: {response.status_code}")
+                break
+                
+        # Apply month filtering to closed PRs if specified
+        if month:
+            filtered_closed_prs = []
+            for pr in all_closed_prs:
+                created_date = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+                if created_date.strftime('%Y-%m') == month:
+                    filtered_closed_prs.append(pr)
+            closed_prs = filtered_closed_prs
+            logger.info(f"DEBUG - After month filter ({month}): {len(closed_prs)} closed PRs")
+        else:
+            closed_prs = all_closed_prs
+        
+        logger.info(f"PR STATS DEBUG - FINAL CLOSED PR COUNT: {len(closed_prs)}")
+        all_prs = open_prs + closed_prs
     
-        # Get PRs with specific labels (only open ones)
+        # Get PRs with specific labels (only open ones) - using filtered open_prs
         if labels:
             # Filter open PRs by labels instead of getting all labeled PRs
             labeled_prs = []
             added_pr_numbers = set()  # Track added PRs to avoid duplicates
             
-            for pr in open_prs:
+            for pr in open_prs:  # Use already filtered open_prs which includes month filter
                 pr_labels = [label['name'] for label in pr['labels']]
                 pr_number = pr['number']
                 
@@ -718,9 +822,33 @@ def pr_stats():
             'total_count': len(all_prs)
         }
         
+        # FINAL DEBUG - Show exactly what we're returning
+        logger.info(f"DEBUG - FINAL STATS BEING RETURNED:")
+        logger.info(f"DEBUG - Available Count (open PRs): {len(open_prs)}")
+        logger.info(f"DEBUG - Closed Count: {len(closed_prs)}")
+        logger.info(f"DEBUG - Total Count: {len(all_prs)}")
+        
+        # Log sample PR numbers for verification
+        if open_prs:
+            open_pr_numbers = [pr['number'] for pr in open_prs[:10]]  # First 10
+            logger.info(f"DEBUG - FIRST 10 OPEN PR NUMBERS: {open_pr_numbers}")
+        
+        if closed_prs:
+            closed_pr_numbers = [pr['number'] for pr in closed_prs[:10]]  # First 10
+            logger.info(f"DEBUG - FIRST 10 CLOSED PR NUMBERS: {closed_pr_numbers}")
+        
         response_time = time.time() - start_time
         logger.info(f"PR stats response time: {response_time:.2f}s")
         logger.debug(f"Returning stats: {stats}")
+        
+        # Cache the stats for faster subsequent requests
+        cache_data = {
+            'cache_key': stats_cache_key,
+            'data': stats,
+            'timestamp': time.time()
+        }
+        pr_cache['data'] = cache_data
+        pr_cache['timestamp'] = time.time()
         
         return jsonify(stats)
     except Exception as e:
