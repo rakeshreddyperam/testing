@@ -955,13 +955,11 @@ def get_prs():
             if pr['state'] == 'open' and include_comments:  # Only fetch when comments are requested
                 review_status = current_service.get_pr_review_status(pr['number'])
             
-            # Extract and get JIRA ticket information (optimized)
-            jira_tickets = []
-            if include_comments:  # Only process JIRA when detailed view is requested
-                pr_title = pr.get('title') or ''
-                pr_body = pr.get('body') or ''
-                jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
-                jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
+            # Extract and get JIRA ticket information (always include field for compatibility)
+            pr_title = pr.get('title') or ''
+            pr_body = pr.get('body') or ''
+            jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
+            jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
             
             formatted_prs.append({
                 'title': pr_title,

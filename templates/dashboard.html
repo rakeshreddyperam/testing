@@ -1071,9 +1071,9 @@
             
             prModalInstance.show();
             
-            // Fetch PR details (skip expensive operations for faster loading)
+            // Fetch PR details
             const sortBy = document.getElementById('sortSelect').value || 'newest';
-            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'false' });
+            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'true' });
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
