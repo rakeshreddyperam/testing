@@ -278,6 +278,19 @@
             </div>
         </div>
         
+        <!-- Cache Status -->
+        <div class="row mb-2">
+            <div class="col-12">
+                <small class="text-muted">
+                    <i class="fas fa-database"></i> Cache: 
+                    <span id="cacheStatus">Loading...</span>
+                    <button class="btn btn-link btn-sm p-0 ms-2" onclick="clearCache()" title="Clear cache">
+                        <i class="fas fa-trash-alt"></i> Clear
+                    </button>
+                </small>
+            </div>
+        </div>
+        
         <!-- Statistics Cards -->
         <div class="row mb-4" id="statsRow">
             <div class="col-md-4">
@@ -990,9 +1003,7 @@
             console.log('Loading stats with currentLabels:', currentLabels);
             console.log('Stats URL:', `/api/pr-stats?${params}`);
             
-            // Add cache busting to ensure fresh data
-            const cacheBuster = Date.now();
-            fetch(`/api/pr-stats?${params}&_cb=${cacheBuster}`)
+            fetch(`/api/pr-stats?${params}`)
                 .then(response => response.json())
                 .then(stats => {
                     document.getElementById('availableCount').textContent = stats.available_count;
@@ -2124,10 +2135,77 @@
             }
         });
         
+        // Cache management functions
+        function loadCacheStatus() {
+            fetch('/api/cache/info')
+                .then(response => response.json())
+                .then(data => {
+                    const status = `${data.valid_entries} entries`;
+                    document.getElementById('cacheStatus').textContent = status;
+                })
+                .catch(error => {
+                    console.error('Error loading cache status:', error);
+                    document.getElementById('cacheStatus').textContent = 'Error';
+                });
+        }
+        
+        function clearCache() {
+            if (confirm('Clear all cached data? This will cause slower loading until cache rebuilds.')) {
+                fetch('/api/cache/clear', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Cache cleared successfully');
+                        loadCacheStatus();
+                        // Optionally reload stats to rebuild cache
+                        loadStats();
+                    })
+                    .catch(error => {
+                        console.error('Error clearing cache:', error);
+                        alert('Error clearing cache');
+                    });
+            }
+        }
+        
+        // Cache management functions
+        function loadCacheStatus() {
+            fetch('/api/cache/info')
+                .then(response => response.json())
+                .then(data => {
+                    const status = `${data.valid_entries} entries`;
+                    document.getElementById('cacheStatus').textContent = status;
+                })
+                .catch(error => {
+                    console.error('Error loading cache status:', error);
+                    document.getElementById('cacheStatus').textContent = 'Error';
+                });
+        }
+        
+        function clearCache() {
+            if (confirm('Clear all cached data? This will cause slower loading until cache rebuilds.')) {
+                fetch('/api/cache/clear', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Cache cleared successfully');
+                        loadCacheStatus();
+                        // Reload stats to rebuild cache
+                        loadStats();
+                    })
+                    .catch(error => {
+                        console.error('Error clearing cache:', error);
+                        alert('Error clearing cache');
+                    });
+            }
+        }
+        
         // Check JIRA status on page load
         document.addEventListener('DOMContentLoaded', function() {
             checkJiraStatus();
             loadJiraStatusCounts();
+            loadCacheStatus();
+            
+            // Update cache status every 30 seconds
+            setInterval(loadCacheStatus, 30000);
+            setInterval(loadCacheStatus, 30000);
         });
     </script>
 </body>

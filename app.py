@@ -9,6 +9,7 @@ import logging
 import time
 from functools import wraps
 from werkzeug.utils import secure_filename
+from cache_db import cache_db
 
 load_dotenv()
 
@@ -28,12 +29,7 @@ app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
-# Simple memory cache for PR data
-pr_cache = {
-    'data': None,
-    'timestamp': None,
-    'ttl': 300  # 5 minutes cache for balanced performance and freshness
-}
+# Cache is now handled by cache_db module
 
 # Create uploads directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -49,23 +45,7 @@ def add_security_headers(response):
     response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: https:;"
     return response
 
-# Cache helper functions
-def is_cache_valid():
-    """Check if cache is still valid"""
-    if pr_cache['data'] is None or pr_cache['timestamp'] is None:
-        return False
-    return time.time() - pr_cache['timestamp'] < pr_cache['ttl']
-
-def get_cached_data():
-    """Get cached data if valid - RE-ENABLED FOR PERFORMANCE"""
-    if is_cache_valid():
-        return pr_cache['data']
-    return None
-
-def set_cache_data(data):
-    """Set cache data with current timestamp"""
-    pr_cache['data'] = data
-    pr_cache['timestamp'] = time.time()
+# Cache is now handled by cache_db module - old functions removed
 
 # Rate limiting decorator
 def rate_limit(max_requests=60, window=60):
@@ -639,6 +619,14 @@ class JiraService:
 github_service = GitHubService(GITHUB_TOKEN, GITHUB_REPO)
 jira_service = JiraService()
 
+# Initialize cache and clean up expired entries
+try:
+    expired_count = cache_db.clear_expired()
+    cache_info = cache_db.get_cache_info()
+    logger.info(f"Cache initialized - {cache_info['valid_entries']} valid entries, cleared {expired_count} expired entries")
+except Exception as e:
+    logger.error(f"Error initializing cache: {e}")
+
 @app.route('/')
 def dashboard():
     """Main dashboard page"""
@@ -661,13 +649,13 @@ def pr_stats():
         logger.debug(f"Getting PR stats for repo={repo}, month={month}, labels={labels}")
         
         # Create cache key for stats
-        stats_cache_key = f"stats_{repo}_{month}_{','.join(sorted(labels))}"
+        stats_cache_key = f"pr_stats_{repo}_{month or 'all'}_{','.join(sorted(labels))}"
         
-        # Check cache first - aggressive caching for stats
-        cached_data = get_cached_data()
-        if cached_data and cached_data.get('cache_key') == stats_cache_key:
-            logger.info(f"Returning CACHED stats (saved {time.time() - start_time:.2f}s)")
-            return jsonify(cached_data['data'])
+        # Check database cache first (5 minute TTL for fast responses)
+        cached_stats = cache_db.get_cache(stats_cache_key)
+        if cached_stats:
+            logger.info(f"Returning CACHED stats from DB (saved {time.time() - start_time:.2f}s)")
+            return jsonify(cached_stats)
         
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
@@ -841,14 +829,9 @@ def pr_stats():
         logger.info(f"PR stats response time: {response_time:.2f}s")
         logger.debug(f"Returning stats: {stats}")
         
-        # Cache the stats for faster subsequent requests
-        cache_data = {
-            'cache_key': stats_cache_key,
-            'data': stats,
-            'timestamp': time.time()
-        }
-        pr_cache['data'] = cache_data
-        pr_cache['timestamp'] = time.time()
+        # Cache the stats in database for faster subsequent requests (5 minute TTL)
+        cache_db.set_cache(stats_cache_key, stats, ttl_seconds=300)  # 5 minutes cache
+        logger.info(f"Cached stats for key: {stats_cache_key}")
         
         return jsonify(stats)
     except Exception as e:
@@ -873,17 +856,15 @@ def get_prs():
         logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}, sort={sort_by}, include_comments={include_comments}")
         
         # Create cache key based on request parameters
-        cache_key_base = f"{pr_type}_{month}_{','.join(sorted(labels))}_{repo}_{sort_by}"
-        cache_key = f"{cache_key_base}_comments_{include_comments}"
+        cache_key_base = f"{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}"
+        cache_key = f"prs_{cache_key_base}_comments_{include_comments}"
         logger.debug(f"Cache key: {cache_key}")
         
-        # Check cache to improve performance
-        cached_data = get_cached_data()
-        if cached_data and cached_data.get('cache_key') == cache_key:
-            logger.info(f"Returning cached data for key: {cache_key} (saved {time.time() - start_time:.2f}s)")
-            return jsonify(cached_data['data'])
-        else:
-            logger.debug(f"Cache miss for key: {cache_key} (cached_key: {cached_data.get('cache_key') if cached_data else 'None'})")
+        # Check database cache first (3 minute TTL for PR details)
+        cached_prs = cache_db.get_cache(cache_key)
+        if cached_prs:
+            logger.info(f"Returning cached PR data from DB (saved {time.time() - start_time:.2f}s)")
+            return jsonify(cached_prs)
         
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
@@ -1009,13 +990,9 @@ def get_prs():
         response_time = time.time() - start_time
         logger.info(f"PR details response time: {response_time:.2f}s, returned {len(formatted_prs)} PRs")
         
-        # Cache the result for faster future requests
-        cache_data = {
-            'cache_key': cache_key,
-            'data': formatted_prs
-        }
-        set_cache_data(cache_data)
-        logger.info(f"Cached data for key: {cache_key}")
+        # Cache the result in database for faster future requests (3 minute TTL)
+        cache_db.set_cache(cache_key, formatted_prs, ttl_seconds=180)  # 3 minutes cache for PR details
+        logger.info(f"Cached PR data for key: {cache_key}")
         
         return jsonify(formatted_prs)
     except Exception as e:
@@ -1050,7 +1027,13 @@ def debug_closed_prs():
 def available_months():
     """Get available months from PRs"""
     try:
-        repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        repo = request.args.get('repo', GITHUB_REPO)
+        cache_key = f"months_{repo}"
+        
+        # Check cache first (10 minute TTL)
+        cached_months = cache_db.get_cache(cache_key)
+        if cached_months:
+            return jsonify(cached_months)
         
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
@@ -1062,7 +1045,12 @@ def available_months():
             created_date = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
             months.add(created_date.strftime('%Y-%m'))
         
-        return jsonify(sorted(list(months), reverse=True))
+        result = sorted(list(months), reverse=True)
+        
+        # Cache result for 10 minutes
+        cache_db.set_cache(cache_key, result, ttl_seconds=600)
+        
+        return jsonify(result)
     except Exception as e:
         print(f"Error getting available months: {e}")
         # Return some default months if there's an error
@@ -1072,7 +1060,13 @@ def available_months():
 def available_labels():
     """Get available labels from PRs"""
     try:
-        repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        repo = request.args.get('repo', GITHUB_REPO)
+        cache_key = f"labels_{repo}"
+        
+        # Check cache first (10 minute TTL)
+        cached_labels = cache_db.get_cache(cache_key)
+        if cached_labels:
+            return jsonify(cached_labels)
         
         # Create GitHub service for the requested repository
         current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
@@ -1084,7 +1078,12 @@ def available_labels():
             for label in pr.get('labels', []):
                 labels.add(label['name'])
         
-        return jsonify(sorted(list(labels)))
+        result = sorted(list(labels))
+        
+        # Cache result for 10 minutes
+        cache_db.set_cache(cache_key, result, ttl_seconds=600)
+        
+        return jsonify(result)
     except Exception as e:
         print(f"Error getting available labels: {e}")
         # Return some default labels if there's an error
@@ -1350,5 +1349,44 @@ def clear_jira_data():
         logger.error(f"Error clearing JIRA data: {e}")
         return jsonify({'error': 'Failed to clear JIRA data'}), 500
 
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear all API cache"""
+    try:
+        cache_db.clear_cache()
+        return jsonify({'message': 'Cache cleared successfully'})
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        return jsonify({'error': 'Failed to clear cache'}), 500
+
+@app.route('/api/cache/info')
+def cache_info():
+    """Get cache information"""
+    try:
+        info = cache_db.get_cache_info()
+        return jsonify(info)
+    except Exception as e:
+        logger.error(f"Error getting cache info: {e}")
+        return jsonify({'error': 'Failed to get cache info'}), 500
+
+# Periodic cache cleanup function
+def cleanup_cache():
+    """Clean up expired cache entries"""
+    try:
+        expired_count = cache_db.clear_expired()
+        if expired_count > 0:
+            logger.info(f"Cleaned up {expired_count} expired cache entries")
+    except Exception as e:
+        logger.error(f"Error during cache cleanup: {e}")
+
+# Schedule cache cleanup every 30 minutes
+import threading
+def schedule_cache_cleanup():
+    cleanup_cache()
+    # Schedule next cleanup in 30 minutes
+    threading.Timer(1800, schedule_cache_cleanup).start()
+
 if __name__ == '__main__':
+    # Start cache cleanup scheduler
+    schedule_cache_cleanup()
     app.run(debug=True, host='0.0.0.0', port=5000)
