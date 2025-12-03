@@ -1071,9 +1071,9 @@
             
             prModalInstance.show();
             
-            // Fetch PR details (always include comments for last comment info)
+            // Fetch PR details (skip expensive operations for faster loading)
             const sortBy = document.getElementById('sortSelect').value || 'newest';
-            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'true' });
+            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'false' });
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
@@ -1181,30 +1181,18 @@
                             }
                         }
                         
-                        // JIRA tickets info
+                        // JIRA tickets info (simplified for performance)
                         let jiraInfo = '';
                         if (pr.jira_tickets && pr.jira_tickets.length > 0) {
-                            console.log('JIRA tickets found:', pr.jira_tickets);
                             const jiraTickets = pr.jira_tickets.map(ticket => {
-                                console.log('Processing ticket:', ticket);
-                                let badgeClass = 'bg-secondary';
-                                if (ticket.status_category === 'Done') {
-                                    badgeClass = 'bg-success';
-                                } else if (ticket.status_category === 'In Progress') {
-                                    badgeClass = 'bg-warning';
-                                } else if (ticket.status_category === 'To Do') {
-                                    badgeClass = 'bg-info';
-                                }
-                                
-                                // Ensure link exists
+                                const badgeClass = ticket.status_category === 'Done' ? 'bg-success' : 
+                                                 ticket.status_category === 'In Progress' ? 'bg-warning' : 'bg-info';
                                 const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
-                                console.log('Ticket link:', ticketLink);
                                 
                                 return `
                                     <a href="${ticketLink}" target="_blank" class="text-decoration-none">
-                                        <span class="badge ${badgeClass} me-1" title="${ticket.summary} - ${ticket.assignee}">
-                                            <i class="fas fa-bug"></i> ${ticket.key}: ${ticket.status}
-                                            <i class="fas fa-external-link-alt ms-1"></i>
+                                        <span class="badge ${badgeClass} me-1" title="${ticket.summary}">
+                                            ${ticket.key}: ${ticket.status}
                                         </span>
                                     </a>
                                 `;
@@ -1243,6 +1231,17 @@
                     });
                     
                     modalBody.innerHTML = html;
+                    
+                    // Add performance tip if no comments were loaded
+                    if (!allPRs.some(pr => pr.last_comment_at)) {
+                        const perfTip = document.createElement('div');
+                        perfTip.className = 'alert alert-info alert-dismissible fade show mt-2';
+                        perfTip.innerHTML = `
+                            <i class="fas fa-rocket"></i> <strong>Fast mode:</strong> Comment details skipped for faster loading. 
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        modalBody.insertBefore(perfTip, modalBody.firstChild);
+                    }
                     
                     // Show pagination controls
                     const totalPages = Math.ceil(allPRs.length / prsPerPage);

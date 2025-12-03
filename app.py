@@ -950,17 +950,18 @@ def get_prs():
             # Get last comment date from parallel fetch results
             last_comment_date = comment_dates.get(pr['number']) if include_comments else None
             
-            # Get review status for open PRs
+            # Get review status for open PRs (skip for faster loading unless specifically requested)
             review_status = None
-            if pr['state'] == 'open':
+            if pr['state'] == 'open' and include_comments:  # Only fetch when comments are requested
                 review_status = current_service.get_pr_review_status(pr['number'])
             
-            # Extract and get JIRA ticket information
-            # Handle None values properly for title and body
-            pr_title = pr.get('title') or ''
-            pr_body = pr.get('body') or ''
-            jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
-            jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
+            # Extract and get JIRA ticket information (optimized)
+            jira_tickets = []
+            if include_comments:  # Only process JIRA when detailed view is requested
+                pr_title = pr.get('title') or ''
+                pr_body = pr.get('body') or ''
+                jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
+                jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
             
             formatted_prs.append({
                 'title': pr_title,
@@ -990,8 +991,8 @@ def get_prs():
         response_time = time.time() - start_time
         logger.info(f"PR details response time: {response_time:.2f}s, returned {len(formatted_prs)} PRs")
         
-        # Cache the result in database for faster future requests (3 minute TTL)
-        cache_db.set_cache(cache_key, formatted_prs, ttl_seconds=180)  # 3 minutes cache for PR details
+        # Cache the result in database for faster future requests (10 minute TTL for better performance)
+        cache_db.set_cache(cache_key, formatted_prs, ttl_seconds=600)  # 10 minutes cache for PR details
         logger.info(f"Cached PR data for key: {cache_key}")
         
         return jsonify(formatted_prs)
