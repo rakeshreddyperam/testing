@@ -1289,10 +1289,14 @@
             
             // Add event listener for sort change
             document.getElementById('sortSelect').onchange = function() {
-                showPRDetails(type);
+                const modalEl = document.getElementById('prModal');
+                const currentType = modalEl ? modalEl.getAttribute('data-current-type') : 'open';
+                showPRDetails(currentType);
             };
             document.getElementById('fastModeToggle').onchange = function() {
-                showPRDetails(type);
+                const modalEl = document.getElementById('prModal');
+                const currentType = modalEl ? modalEl.getAttribute('data-current-type') : 'open';
+                showPRDetails(currentType);
             };
         
         // PR Pagination Functions
