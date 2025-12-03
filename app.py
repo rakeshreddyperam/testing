@@ -852,11 +852,22 @@ def get_prs():
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
         sort_by = request.args.get('sort', 'newest')  # newest, oldest, most_recent, updated
         include_comments = request.args.get('include_comments', 'false').lower() == 'true'
+        # Server-side pagination params
+        try:
+            page = int(request.args.get('page', '1'))
+            per_page = int(request.args.get('per_page', '6'))
+            if page < 1:
+                page = 1
+            if per_page < 1:
+                per_page = 6
+        except Exception:
+            page = 1
+            per_page = 6
         
         logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}, sort={sort_by}, include_comments={include_comments}")
         
         # Create cache key based on request parameters
-        cache_key_base = f"{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}"
+        cache_key_base = f"{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}_p{page}_pp{per_page}"
         cache_key = f"prs_{cache_key_base}_comments_{include_comments}"
         logger.debug(f"Cache key: {cache_key}")
         
@@ -912,14 +923,29 @@ def get_prs():
             # Get PRs for specific state (open or closed)
             prs = current_service.get_pull_requests(state=pr_type, month=month)
     
+        # Sort raw PRs before pagination to keep consistent ordering
+        if sort_by == 'newest':
+            prs.sort(key=lambda x: x['created_at'], reverse=True)
+        elif sort_by == 'oldest':
+            prs.sort(key=lambda x: x['created_at'], reverse=False)
+        elif sort_by == 'most_recent':
+            prs.sort(key=lambda x: x['updated_at'], reverse=True)
+
+        total_items = len(prs)
+        total_pages = max(1, (total_items + per_page - 1) // per_page)
+        # Compute slice indices for server-side pagination
+        start_index = (page - 1) * per_page
+        end_index = min(start_index + per_page, total_items)
+        page_prs = prs[start_index:end_index]
+
         # Format PR data for frontend and optionally get last comment dates and review status
         formatted_prs = []
         
         # If comments are requested, fetch them only for open PRs (available/labeled)
         comment_dates = {}
-        if include_comments and prs:
+        if include_comments and page_prs:
             # Only fetch comments for open PRs - closed PRs don't need comment info
-            open_prs_for_comments = [pr for pr in prs if pr['state'] == 'open']
+            open_prs_for_comments = [pr for pr in page_prs if pr['state'] == 'open']
             
             if open_prs_for_comments:
                 logger.info(f"Fetching comments for {len(open_prs_for_comments)} open PRs in parallel...")
@@ -946,7 +972,7 @@ def get_prs():
             else:
                 logger.info("No open PRs found - skipping comment fetching")
         
-        for pr in prs:
+        for pr in page_prs:
             # Get last comment date from parallel fetch results
             last_comment_date = comment_dates.get(pr['number']) if include_comments else None
             
@@ -975,25 +1001,22 @@ def get_prs():
                 'labels': [label['name'] for label in pr.get('labels', [])]
             })
         
-        # Sort PRs based on sort parameter
-        if sort_by == 'newest':
-            # Most recently created first
-            formatted_prs.sort(key=lambda x: x['created_at'], reverse=True)
-        elif sort_by == 'oldest':
-            # Oldest created first
-            formatted_prs.sort(key=lambda x: x['created_at'], reverse=False)
-        elif sort_by == 'most_recent':
-            # Most recently updated first
-            formatted_prs.sort(key=lambda x: x['updated_at'], reverse=True)
-        
         response_time = time.time() - start_time
-        logger.info(f"PR details response time: {response_time:.2f}s, returned {len(formatted_prs)} PRs")
-        
+        logger.info(f"PR details response time: {response_time:.2f}s, returned {len(formatted_prs)} PRs (page {page}/{total_pages}, total {total_items})")
+
+        result = {
+            'items': formatted_prs,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'total_items': total_items
+        }
+
         # Cache the result in database for faster future requests (10 minute TTL for better performance)
-        cache_db.set_cache(cache_key, formatted_prs, ttl_seconds=600)  # 10 minutes cache for PR details
+        cache_db.set_cache(cache_key, result, ttl_seconds=600)  # 10 minutes cache for PR details
         logger.info(f"Cached PR data for key: {cache_key}")
-        
-        return jsonify(formatted_prs)
+
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Error getting PR details: {e}", exc_info=True)
         # Return more specific error information for debugging

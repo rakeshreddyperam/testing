@@ -531,6 +531,10 @@
                                 <option value="oldest">Oldest First</option>
                                 <option value="most_recent">Recently Updated</option>
                             </select>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="fastModeToggle" checked>
+                                <label class="form-check-label small" for="fastModeToggle">Fast mode</label>
+                            </div>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                     </div>
@@ -561,6 +565,9 @@
                                     </li>
                                 </ul>
                             </nav>
+                            <div class="ms-3">
+                                <small class="text-muted" id="prDebugInfo" title="Active filters">—</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -680,12 +687,14 @@
                 loadAvailableLabels();
                 loadStats();
                 loadReviewerStats();
+                refreshOpenModalIfVisible();
             });
             
             document.getElementById('monthFilter').addEventListener('change', function() {
                 currentMonth = this.value;
                 loadStats();
                 loadReviewerStats();
+                refreshOpenModalIfVisible();
             });
             
             // Card click handlers (exclude testing card which has its own handler)
@@ -900,6 +909,8 @@
                     });
                     
                     updateLabelDropdownText();
+                    // If modal is open, refresh it to apply label filters
+                    refreshOpenModalIfVisible();
                 })
                 .catch(error => {
                     console.error('Error loading labels:', error);
@@ -971,6 +982,7 @@
                             
                             updateLabelDropdownText();
                             debouncedLoadStats(); // Use debounced version for filter changes
+                            refreshOpenModalIfVisible();
                         });
                     });
                 });
@@ -1070,10 +1082,14 @@
             `;
             
             prModalInstance.show();
+            // Persist current modal type for refresh on filter changes
+            document.getElementById('prModal').setAttribute('data-current-type', type);
             
-            // Fetch PR details
+            // Fetch PR details (server-side pagination)
             const sortBy = document.getElementById('sortSelect').value || 'newest';
-            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'true' });
+            currentPRPage = 1; // reset to first page when opening
+            const includeDetails = !document.getElementById('fastModeToggle').checked ? 'true' : 'false';
+            const params = new URLSearchParams({ type, sort: sortBy, include_comments: includeDetails, page: String(currentPRPage), per_page: String(prsPerPage) });
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
@@ -1082,19 +1098,29 @@
             
             fetch(`/api/prs?${params}`)
                 .then(response => response.json())
-                .then(prs => {
+                .then(data => {
+                    const prs = data.items || [];
                     if (prs.length === 0) {
                         modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
                         document.getElementById('prModalFooter').style.display = 'none';
                         return;
                     }
                     
-                    // Store all PRs for pagination
-                    allPRs = prs;
-                    currentPRPage = 1;
+                    // Store page data and display
+                    allPRs = prs; // current page items only
+                    const totalPages = data.total_pages || 1;
+                    const totalItems = data.total_items || prs.length;
                     
-                    // Display paginated PRs
                     displayPaginatedPRs();
+                    // Show pagination controls
+                    if (totalPages > 1) {
+                        document.getElementById('prModalFooter').style.display = 'block';
+                        updatePRPagination(totalPages, totalItems);
+                    } else {
+                        document.getElementById('prModalFooter').style.display = 'none';
+                    }
+                    // Update debug info
+                    updatePRDebugInfo(type, sortBy, includeDetails, totalItems, totalPages);
                 })
                 .catch(error => {
                     console.error('Error loading PRs:', error);
@@ -1102,14 +1128,22 @@
                     document.getElementById('prModalFooter').style.display = 'none';
                 });
         }
+
+        function refreshOpenModalIfVisible() {
+            const modalEl = document.getElementById('prModal');
+            if (modalEl && modalEl.classList.contains('show')) {
+                const currentType = modalEl.getAttribute('data-current-type');
+                if (currentType) {
+                    showPRDetails(currentType);
+                }
+            }
+        }
         
         function displayPaginatedPRs() {
             const modalBody = document.getElementById('modalBody');
-            const startIndex = (currentPRPage - 1) * prsPerPage;
-            const endIndex = startIndex + prsPerPage;
-            const paginatedPRs = allPRs.slice(startIndex, endIndex);
+            const paginatedPRs = allPRs; // already server-paginated items
             
-            if (paginatedPRs.length === 0) {
+            if (!paginatedPRs || paginatedPRs.length === 0) {
                 modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
                 document.getElementById('prModalFooter').style.display = 'none';
                 return;
@@ -1257,17 +1291,54 @@
             document.getElementById('sortSelect').onchange = function() {
                 showPRDetails(type);
             };
+            document.getElementById('fastModeToggle').onchange = function() {
+                showPRDetails(type);
+            };
         
         // PR Pagination Functions
         function changePRPage(page) {
-            const totalPages = Math.ceil(allPRs.length / prsPerPage);
-            if (page >= 1 && page <= totalPages) {
-                currentPRPage = page;
-                displayPaginatedPRs();
+            // Request the next page from the server
+            if (page < 1) return;
+            const sortBy = document.getElementById('sortSelect').value || 'newest';
+            const includeDetails = !document.getElementById('fastModeToggle').checked ? 'true' : 'false';
+            const modalEl = document.getElementById('prModal');
+            const currentType = modalEl ? (modalEl.getAttribute('data-current-type') || 'open') : 'open';
+            const params = new URLSearchParams({ type: currentType, sort: sortBy, include_comments: includeDetails, page: String(page), per_page: String(prsPerPage) });
+            if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
+            if (currentType === 'labeled') {
+                currentLabels.forEach(label => params.append('labels', label));
             }
+            fetch(`/api/prs?${params}`)
+                .then(response => response.json())
+                .then(data => {
+                    const prs = data.items || [];
+                    allPRs = prs;
+                    currentPRPage = data.page || page;
+                    displayPaginatedPRs();
+                    const totalPages = data.total_pages || 1;
+                    const totalItems = data.total_items || prs.length;
+                    // Ensure footer visibility reflects current totals
+                    if (totalPages > 1) {
+                        document.getElementById('prModalFooter').style.display = 'block';
+                    } else {
+                        document.getElementById('prModalFooter').style.display = 'none';
+                    }
+                    updatePRPagination(totalPages, totalItems);
+                    // Update debug info
+                    updatePRDebugInfo(currentType, sortBy, includeDetails, totalItems, totalPages);
+                })
+                .catch(err => console.error('Error loading page:', err));
+        }
+
+        function updatePRDebugInfo(type, sortBy, includeDetails, totalItems, totalPages) {
+            const labelsText = currentLabels && currentLabels.length ? currentLabels.join(',') : 'none';
+            const info = `type=${type}, sort=${sortBy}, repo=${currentRepo}, month=${currentMonth||'all'}, labels=${labelsText}, comments=${includeDetails}, total=${totalItems}, pages=${totalPages}`;
+            const el = document.getElementById('prDebugInfo');
+            if (el) el.textContent = info;
         }
         
-        function updatePRPagination(totalPages) {
+        function updatePRPagination(totalPages, totalItems) {
             const currentPageSpan = document.getElementById('prCurrentPage');
             const totalPagesSpan = document.getElementById('prTotalPages');
             const showingCountSpan = document.getElementById('prShowingCount');
@@ -1282,9 +1353,9 @@
             
             // Update showing count
             const startIndex = (currentPRPage - 1) * prsPerPage;
-            const endIndex = Math.min(startIndex + prsPerPage, allPRs.length);
-            showingCountSpan.textContent = endIndex - startIndex;
-            totalCountSpan.textContent = allPRs.length;
+            const endIndex = Math.min(startIndex + prsPerPage, totalItems);
+            showingCountSpan.textContent = Math.min(prsPerPage, endIndex - startIndex);
+            totalCountSpan.textContent = totalItems;
             
             // Update pagination controls
             currentPageLink.textContent = currentPRPage;
