@@ -1245,41 +1245,57 @@ def get_reviewer_prs():
 def upload_jira_file():
     """Upload JIRA data file (CSV or JSON)"""
     try:
+        logger.info("JIRA file upload request received")
+        
         if 'file' not in request.files:
+            logger.warning("No file in request")
             return jsonify({'error': 'No file provided'}), 400
         
         file = request.files['file']
         if file.filename == '':
+            logger.warning("Empty filename")
             return jsonify({'error': 'No file selected'}), 400
+        
+        logger.info(f"Processing file: {file.filename}")
         
         # Check file extension
         filename = secure_filename(file.filename)
         file_ext = filename.lower().split('.')[-1]
         
+        logger.info(f"File extension: {file_ext}")
+        
         if file_ext not in ['csv', 'json']:
+            logger.warning(f"Unsupported file type: {file_ext}")
             return jsonify({'error': 'Only CSV and JSON files are supported'}), 400
         
         # Save uploaded file
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f'uploaded_jira.{file_ext}')
+        logger.info(f"Saving file to: {file_path}")
         file.save(file_path)
         
         # Process the file
+        logger.info("Processing uploaded file")
         success = jira_service.process_uploaded_file(file_path, file_ext)
         
         # Clean up uploaded file
-        os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info("Cleaned up temporary file")
         
         if success:
+            tickets_count = len(jira_service.jira_data)
+            logger.info(f"Successfully processed {tickets_count} JIRA tickets")
             return jsonify({
                 'message': 'JIRA data uploaded successfully',
-                'tickets_count': len(jira_service.jira_data)
+                'tickets_count': tickets_count
             })
         else:
+            logger.error("Failed to process JIRA file")
             return jsonify({'error': 'Failed to process JIRA file'}), 400
             
     except Exception as e:
-        logger.error(f"Error uploading JIRA file: {e}")
-        return jsonify({'error': 'Failed to upload JIRA file'}), 500
+        logger.error(f"Error uploading JIRA file: {e}", exc_info=True)
+        return jsonify({'error': f'Failed to upload JIRA file: {str(e)}'}), 500
 
 @app.route('/api/jira/status')
 def get_jira_status():

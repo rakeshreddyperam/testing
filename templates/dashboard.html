@@ -565,9 +565,7 @@
                                     </li>
                                 </ul>
                             </nav>
-                            <div class="ms-3">
-                                <small class="text-muted" id="prDebugInfo" title="Active filters">—</small>
-                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -1119,8 +1117,7 @@
                     } else {
                         document.getElementById('prModalFooter').style.display = 'none';
                     }
-                    // Update debug info
-                    updatePRDebugInfo(type, sortBy, includeDetails, totalItems, totalPages);
+
                 })
                 .catch(error => {
                     console.error('Error loading PRs:', error);
@@ -1329,18 +1326,12 @@
                         document.getElementById('prModalFooter').style.display = 'none';
                     }
                     updatePRPagination(totalPages, totalItems);
-                    // Update debug info
-                    updatePRDebugInfo(currentType, sortBy, includeDetails, totalItems, totalPages);
+
                 })
                 .catch(err => console.error('Error loading page:', err));
         }
 
-        function updatePRDebugInfo(type, sortBy, includeDetails, totalItems, totalPages) {
-            const labelsText = currentLabels && currentLabels.length ? currentLabels.join(',') : 'none';
-            const info = `type=${type}, sort=${sortBy}, repo=${currentRepo}, month=${currentMonth||'all'}, labels=${labelsText}, comments=${includeDetails}, total=${totalItems}, pages=${totalPages}`;
-            const el = document.getElementById('prDebugInfo');
-            if (el) el.textContent = info;
-        }
+
         
         function updatePRPagination(totalPages, totalItems) {
             const currentPageSpan = document.getElementById('prCurrentPage');
