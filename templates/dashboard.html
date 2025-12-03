@@ -1765,9 +1765,17 @@
             
             fetch('/api/jira/upload', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                timeout: 30000 // 30 second timeout
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.error) {
                     throw new Error(data.error);
@@ -1806,9 +1814,14 @@
                 }
             })
             .catch(error => {
+                console.error('JIRA upload error:', error);
+                let errorMessage = error.message;
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Connection failed. Please check if the server is running and try again.';
+                }
                 document.getElementById('jiraStatus').innerHTML = `
                     <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                        <i class="fas fa-exclamation-circle"></i> Error: ${errorMessage}
                     </div>
                 `;
             })
@@ -1846,9 +1859,13 @@
                 refreshJiraData();
             })
             .catch(error => {
+                console.error('JIRA upload error:', error);
+                const errorMsg = error.name === 'TypeError' && error.message.includes('fetch') ? 
+                    'Network error - check if Flask server is running on port 5000' : 
+                    error.message;
                 document.getElementById('jiraStatus').innerHTML = `
                     <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                        <i class="fas fa-exclamation-circle"></i> Upload failed: ${errorMsg}
                     </div>
                 `;
             });
