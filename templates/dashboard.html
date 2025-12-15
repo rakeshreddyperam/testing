@@ -239,6 +239,10 @@
                     <i class="fab fa-github me-1"></i>Repository:
                 </label>
                 <select id="repoFilter" class="form-select">
+                    <option value="Zelis-Data-Intelligence-ZDI/zdi-data-admin" selected>Zelis-Data-Intelligence-ZDI/zdi-data-admin</option>
+                    <option value="Zelis-Data-Intelligence-ZDI/Address-Service">Zelis-Data-Intelligence-ZDI/Address-Service</option>
+                    <option value="Zelis-Data-Intelligence-ZDI/smrf-hub">Zelis-Data-Intelligence-ZDI/smrf-hub</option>
+                    <option value="Zelis-Data-Intelligence-ZDI/astro-zse">Zelis-Data-Intelligence-ZDI/astro-zse</option>
                     <option value="rakeshreddyperam/testing">rakeshreddyperam/testing</option>
                     <option value="microsoft/vscode">microsoft/vscode</option>
                     <option value="facebook/react">facebook/react</option>
@@ -271,6 +275,19 @@
                     </div>
                 </div>
                 <small class="form-text text-muted">Click to select/deselect labels</small>
+            </div>
+        </div>
+        
+        <!-- Cache Status -->
+        <div class="row mb-2">
+            <div class="col-12">
+                <small class="text-muted">
+                    <i class="fas fa-database"></i> Cache: 
+                    <span id="cacheStatus">Loading...</span>
+                    <button class="btn btn-link btn-sm p-0 ms-2" onclick="clearCache()" title="Clear cache">
+                        <i class="fas fa-trash-alt"></i> Clear
+                    </button>
+                </small>
             </div>
         </div>
         
@@ -399,6 +416,19 @@
                     </div>
                 </div>
             </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Cancelled')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-times-circle fa-xl text-secondary mb-2"></i>
+                        <h3 class="card-title text-secondary mb-1" id="cancelledCount">-</h3>
+                        <p class="card-text mb-0">Cancelled</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <!-- Reviewers and JIRA Cards Side by Side -->
@@ -501,6 +531,10 @@
                                 <option value="oldest">Oldest First</option>
                                 <option value="most_recent">Recently Updated</option>
                             </select>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="fastModeToggle" checked>
+                                <label class="form-check-label small" for="fastModeToggle">Fast mode</label>
+                            </div>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                     </div>
@@ -508,6 +542,30 @@
                         <div class="text-center">
                             <div class="spinner-border" role="status"></div>
                             <p>Loading PRs...</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer pagination-controls" id="prModalFooter" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="pagination-info">
+                                <small class="text-muted">
+                                    Page <span id="prCurrentPage">1</span> of <span id="prTotalPages">1</span> 
+                                    (Showing <span id="prShowingCount">0</span> of <span id="prTotalCount">0</span> PRs)
+                                </small>
+                            </div>
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0">
+                                    <li class="page-item" id="prPrevPage">
+                                        <a class="page-link" href="#" onclick="changePRPage(currentPRPage - 1)">Previous</a>
+                                    </li>
+                                    <li class="page-item active" id="prPageNum">
+                                        <a class="page-link" href="#" id="prCurrentPageLink">1</a>
+                                    </li>
+                                    <li class="page-item" id="prNextPage">
+                                        <a class="page-link" href="#" onclick="changePRPage(currentPRPage + 1)">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
+
                         </div>
                     </div>
                 </div>
@@ -568,7 +626,7 @@
     <script>
         let currentMonth = '';
         let currentLabels = [];
-        let currentRepo = 'rakeshreddyperam/testing';
+        let currentRepo = 'Zelis-Data-Intelligence-ZDI/zdi-data-admin';
         let requestQueue = new Map(); // Prevent duplicate requests
         let prModalInstance = null; // Store modal instance
         
@@ -581,6 +639,11 @@
         let allJiraTickets = []; // Store all JIRA tickets data
         let currentJiraPage = 1;
         const jiraTicketsPerPage = 10; // Show 10 JIRA tickets per page
+        
+        // Pagination variables for PR lists
+        let allPRs = []; // Store all PRs data
+        let currentPRPage = 1;
+        const prsPerPage = 6; // Show 6 PRs per page
         
         // Debounce function to prevent too many rapid requests
         function debounce(func, wait) {
@@ -622,12 +685,14 @@
                 loadAvailableLabels();
                 loadStats();
                 loadReviewerStats();
+                refreshOpenModalIfVisible();
             });
             
             document.getElementById('monthFilter').addEventListener('change', function() {
                 currentMonth = this.value;
                 loadStats();
                 loadReviewerStats();
+                refreshOpenModalIfVisible();
             });
             
             // Card click handlers (exclude testing card which has its own handler)
@@ -842,6 +907,8 @@
                     });
                     
                     updateLabelDropdownText();
+                    // If modal is open, refresh it to apply label filters
+                    refreshOpenModalIfVisible();
                 })
                 .catch(error => {
                     console.error('Error loading labels:', error);
@@ -913,6 +980,7 @@
                             
                             updateLabelDropdownText();
                             debouncedLoadStats(); // Use debounced version for filter changes
+                            refreshOpenModalIfVisible();
                         });
                     });
                 });
@@ -923,6 +991,11 @@
         
         function loadStats() {
             const requestKey = 'loadStats';
+            
+            // Show loading state immediately for better UX
+            document.getElementById('availableCount').textContent = '-';
+            document.getElementById('labeledCount').textContent = '-';
+            document.getElementById('closedCount').textContent = '-';
             
             // Prevent duplicate requests
             if (requestQueue.has(requestKey)) {
@@ -1007,10 +1080,14 @@
             `;
             
             prModalInstance.show();
+            // Persist current modal type for refresh on filter changes
+            document.getElementById('prModal').setAttribute('data-current-type', type);
             
-            // Fetch PR details (always include comments for last comment info)
+            // Fetch PR details (server-side pagination)
             const sortBy = document.getElementById('sortSelect').value || 'newest';
-            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'true' });
+            currentPRPage = 1; // reset to first page when opening
+            const includeDetails = !document.getElementById('fastModeToggle').checked ? 'true' : 'false';
+            const params = new URLSearchParams({ type, sort: sortBy, include_comments: includeDetails, page: String(currentPRPage), per_page: String(prsPerPage) });
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
@@ -1019,14 +1096,58 @@
             
             fetch(`/api/prs?${params}`)
                 .then(response => response.json())
-                .then(prs => {
+                .then(data => {
+                    const prs = data.items || [];
                     if (prs.length === 0) {
                         modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
+                        document.getElementById('prModalFooter').style.display = 'none';
                         return;
                     }
                     
-                    let html = '';
-                    prs.forEach(pr => {
+                    // Store page data and display
+                    allPRs = prs; // current page items only
+                    const totalPages = data.total_pages || 1;
+                    const totalItems = data.total_items || prs.length;
+                    
+                    displayPaginatedPRs();
+                    // Show pagination controls
+                    if (totalPages > 1) {
+                        document.getElementById('prModalFooter').style.display = 'block';
+                        updatePRPagination(totalPages, totalItems);
+                    } else {
+                        document.getElementById('prModalFooter').style.display = 'none';
+                    }
+
+                })
+                .catch(error => {
+                    console.error('Error loading PRs:', error);
+                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
+                    document.getElementById('prModalFooter').style.display = 'none';
+                });
+        }
+
+        function refreshOpenModalIfVisible() {
+            const modalEl = document.getElementById('prModal');
+            if (modalEl && modalEl.classList.contains('show')) {
+                const currentType = modalEl.getAttribute('data-current-type');
+                if (currentType) {
+                    showPRDetails(currentType);
+                }
+            }
+        }
+        
+        function displayPaginatedPRs() {
+            const modalBody = document.getElementById('modalBody');
+            const paginatedPRs = allPRs; // already server-paginated items
+            
+            if (!paginatedPRs || paginatedPRs.length === 0) {
+                modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
+                document.getElementById('prModalFooter').style.display = 'none';
+                return;
+            }
+            
+            let html = '';
+            paginatedPRs.forEach(pr => {
                         const createdDate = new Date(pr.created_at).toLocaleDateString();
                         const updatedDate = new Date(pr.updated_at).toLocaleDateString();
                         
@@ -1091,30 +1212,18 @@
                             }
                         }
                         
-                        // JIRA tickets info
+                        // JIRA tickets info (simplified for performance)
                         let jiraInfo = '';
                         if (pr.jira_tickets && pr.jira_tickets.length > 0) {
-                            console.log('JIRA tickets found:', pr.jira_tickets);
                             const jiraTickets = pr.jira_tickets.map(ticket => {
-                                console.log('Processing ticket:', ticket);
-                                let badgeClass = 'bg-secondary';
-                                if (ticket.status_category === 'Done') {
-                                    badgeClass = 'bg-success';
-                                } else if (ticket.status_category === 'In Progress') {
-                                    badgeClass = 'bg-warning';
-                                } else if (ticket.status_category === 'To Do') {
-                                    badgeClass = 'bg-info';
-                                }
-                                
-                                // Ensure link exists
+                                const badgeClass = ticket.status_category === 'Done' ? 'bg-success' : 
+                                                 ticket.status_category === 'In Progress' ? 'bg-warning' : 'bg-info';
                                 const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
-                                console.log('Ticket link:', ticketLink);
                                 
                                 return `
                                     <a href="${ticketLink}" target="_blank" class="text-decoration-none">
-                                        <span class="badge ${badgeClass} me-1" title="${ticket.summary} - ${ticket.assignee}">
-                                            <i class="fas fa-bug"></i> ${ticket.key}: ${ticket.status}
-                                            <i class="fas fa-external-link-alt ms-1"></i>
+                                        <span class="badge ${badgeClass} me-1" title="${ticket.summary}">
+                                            ${ticket.key}: ${ticket.status}
                                         </span>
                                     </a>
                                 `;
@@ -1153,19 +1262,113 @@
                     });
                     
                     modalBody.innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error loading PR details:', error);
-                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
-                });
+                    
+                    // Add performance tip if no comments were loaded
+                    if (!allPRs.some(pr => pr.last_comment_at)) {
+                        const perfTip = document.createElement('div');
+                        perfTip.className = 'alert alert-info alert-dismissible fade show mt-2';
+                        perfTip.innerHTML = `
+                            <i class="fas fa-rocket"></i> <strong>Fast mode:</strong> Comment details skipped for faster loading. 
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        modalBody.insertBefore(perfTip, modalBody.firstChild);
+                    }
+                    
+                    // Show pagination controls
+                    const totalPages = Math.ceil(allPRs.length / prsPerPage);
+                    if (totalPages > 1) {
+                        document.getElementById('prModalFooter').style.display = 'block';
+                        updatePRPagination(totalPages);
+                    } else {
+                        document.getElementById('prModalFooter').style.display = 'none';
+                    }
+                }
             
             // Add event listener for sort change
             document.getElementById('sortSelect').onchange = function() {
-                showPRDetails(type);
+                const modalEl = document.getElementById('prModal');
+                const currentType = modalEl ? modalEl.getAttribute('data-current-type') : 'open';
+                showPRDetails(currentType);
             };
+            document.getElementById('fastModeToggle').onchange = function() {
+                const modalEl = document.getElementById('prModal');
+                const currentType = modalEl ? modalEl.getAttribute('data-current-type') : 'open';
+                showPRDetails(currentType);
+            };
+        
+        // PR Pagination Functions
+        function changePRPage(page) {
+            // Request the next page from the server
+            if (page < 1) return;
+            const sortBy = document.getElementById('sortSelect').value || 'newest';
+            const includeDetails = !document.getElementById('fastModeToggle').checked ? 'true' : 'false';
+            const modalEl = document.getElementById('prModal');
+            const currentType = modalEl ? (modalEl.getAttribute('data-current-type') || 'open') : 'open';
+            const params = new URLSearchParams({ type: currentType, sort: sortBy, include_comments: includeDetails, page: String(page), per_page: String(prsPerPage) });
+            if (currentMonth) params.append('month', currentMonth);
+            if (currentRepo) params.append('repo', currentRepo);
+            if (currentType === 'labeled') {
+                currentLabels.forEach(label => params.append('labels', label));
+            }
+            fetch(`/api/prs?${params}`)
+                .then(response => response.json())
+                .then(data => {
+                    const prs = data.items || [];
+                    allPRs = prs;
+                    currentPRPage = data.page || page;
+                    displayPaginatedPRs();
+                    const totalPages = data.total_pages || 1;
+                    const totalItems = data.total_items || prs.length;
+                    // Ensure footer visibility reflects current totals
+                    if (totalPages > 1) {
+                        document.getElementById('prModalFooter').style.display = 'block';
+                    } else {
+                        document.getElementById('prModalFooter').style.display = 'none';
+                    }
+                    updatePRPagination(totalPages, totalItems);
+
+                })
+                .catch(err => console.error('Error loading page:', err));
+        }
+
+
+        
+        function updatePRPagination(totalPages, totalItems) {
+            const currentPageSpan = document.getElementById('prCurrentPage');
+            const totalPagesSpan = document.getElementById('prTotalPages');
+            const showingCountSpan = document.getElementById('prShowingCount');
+            const totalCountSpan = document.getElementById('prTotalCount');
+            const prevPageBtn = document.getElementById('prPrevPage');
+            const nextPageBtn = document.getElementById('prNextPage');
+            const currentPageLink = document.getElementById('prCurrentPageLink');
+            
+            // Update page info
+            currentPageSpan.textContent = currentPRPage;
+            totalPagesSpan.textContent = totalPages;
+            
+            // Update showing count
+            const startIndex = (currentPRPage - 1) * prsPerPage;
+            const endIndex = Math.min(startIndex + prsPerPage, totalItems);
+            showingCountSpan.textContent = Math.min(prsPerPage, endIndex - startIndex);
+            totalCountSpan.textContent = totalItems;
+            
+            // Update pagination controls
+            currentPageLink.textContent = currentPRPage;
+            
+            // Enable/disable navigation buttons
+            if (currentPRPage === 1) {
+                prevPageBtn.classList.add('disabled');
+            } else {
+                prevPageBtn.classList.remove('disabled');
+            }
+            
+            if (currentPRPage === totalPages) {
+                nextPageBtn.classList.add('disabled');
+            } else {
+                nextPageBtn.classList.remove('disabled');
+            }
         }
         
-
         
         function loadReviewerStats() {
             const reviewersList = document.getElementById('reviewersList');
@@ -1553,9 +1756,17 @@
             
             fetch('/api/jira/upload', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                timeout: 30000 // 30 second timeout
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.error) {
                     throw new Error(data.error);
@@ -1594,9 +1805,14 @@
                 }
             })
             .catch(error => {
+                console.error('JIRA upload error:', error);
+                let errorMessage = error.message;
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Connection failed. Please check if the server is running and try again.';
+                }
                 document.getElementById('jiraStatus').innerHTML = `
                     <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                        <i class="fas fa-exclamation-circle"></i> Error: ${errorMessage}
                     </div>
                 `;
             })
@@ -1634,9 +1850,13 @@
                 refreshJiraData();
             })
             .catch(error => {
+                console.error('JIRA upload error:', error);
+                const errorMsg = error.name === 'TypeError' && error.message.includes('fetch') ? 
+                    'Network error - check if Flask server is running on port 5000' : 
+                    error.message;
                 document.getElementById('jiraStatus').innerHTML = `
                     <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                        <i class="fas fa-exclamation-circle"></i> Upload failed: ${errorMsg}
                     </div>
                 `;
             });
@@ -1705,15 +1925,28 @@
                         'Reviewing': 0,
                         'On Hold': 0,
                         'Work Complete': 0,
-                        'Testing': 0
+                        'Testing': 0,
+                        'Cancelled': 0
                     };
+                    
+                    // Debug: Log all unique statuses to help troubleshoot
+                    const uniqueStatuses = [...new Set(data.tickets.map(ticket => ticket.status))];
+                    console.log('All unique JIRA statuses found:', uniqueStatuses);
                     
                     // Count tickets by status
                     if (data.tickets && Array.isArray(data.tickets)) {
                         data.tickets.forEach(ticket => {
                             const status = ticket.status;
+                            const statusLower = status ? status.toLowerCase() : '';
+                            
                             if (statusCounts.hasOwnProperty(status)) {
                                 statusCounts[status]++;
+                            } else if (status === 'Done') {
+                                // Count 'Done' tickets as 'Work Complete'
+                                statusCounts['Work Complete']++;
+                            } else if (statusLower.includes('cancel') || statusLower.includes('cancel')) {
+                                // Handle various cancelled status formats (Cancelled, Canceled, etc.)
+                                statusCounts['Cancelled']++;
                             }
                         });
                     }
@@ -1725,6 +1958,7 @@
                     document.getElementById('onHoldCount').textContent = statusCounts['On Hold'];
                     document.getElementById('workCompleteCount').textContent = statusCounts['Work Complete'];
                     document.getElementById('testingJiraCount').textContent = statusCounts['Testing'];
+                    document.getElementById('cancelledCount').textContent = statusCounts['Cancelled'];
                     
                     // Hide loading indicators
                     document.querySelectorAll('.jira-status-card .loading').forEach(loader => {
@@ -1785,7 +2019,21 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.tickets && Array.isArray(data.tickets)) {
-                            const filteredTickets = data.tickets.filter(ticket => ticket.status === status);
+                            let filteredTickets;
+                            if (status === 'Work Complete') {
+                                // Include both 'Work Complete' and 'Done' statuses
+                                filteredTickets = data.tickets.filter(ticket => 
+                                    ticket.status === 'Work Complete' || ticket.status === 'Done'
+                                );
+                            } else if (status === 'Cancelled') {
+                                // Include various cancelled status formats
+                                filteredTickets = data.tickets.filter(ticket => {
+                                    const ticketStatus = ticket.status ? ticket.status.toLowerCase() : '';
+                                    return ticketStatus.includes('cancel');
+                                });
+                            } else {
+                                filteredTickets = data.tickets.filter(ticket => ticket.status === status);
+                            }
                             
                             if (filteredTickets.length === 0) {
                                 modalBody.innerHTML = `
@@ -1969,10 +2217,77 @@
             }
         });
         
+        // Cache management functions
+        function loadCacheStatus() {
+            fetch('/api/cache/info')
+                .then(response => response.json())
+                .then(data => {
+                    const status = `${data.valid_entries} entries`;
+                    document.getElementById('cacheStatus').textContent = status;
+                })
+                .catch(error => {
+                    console.error('Error loading cache status:', error);
+                    document.getElementById('cacheStatus').textContent = 'Error';
+                });
+        }
+        
+        function clearCache() {
+            if (confirm('Clear all cached data? This will cause slower loading until cache rebuilds.')) {
+                fetch('/api/cache/clear', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Cache cleared successfully');
+                        loadCacheStatus();
+                        // Optionally reload stats to rebuild cache
+                        loadStats();
+                    })
+                    .catch(error => {
+                        console.error('Error clearing cache:', error);
+                        alert('Error clearing cache');
+                    });
+            }
+        }
+        
+        // Cache management functions
+        function loadCacheStatus() {
+            fetch('/api/cache/info')
+                .then(response => response.json())
+                .then(data => {
+                    const status = `${data.valid_entries} entries`;
+                    document.getElementById('cacheStatus').textContent = status;
+                })
+                .catch(error => {
+                    console.error('Error loading cache status:', error);
+                    document.getElementById('cacheStatus').textContent = 'Error';
+                });
+        }
+        
+        function clearCache() {
+            if (confirm('Clear all cached data? This will cause slower loading until cache rebuilds.')) {
+                fetch('/api/cache/clear', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Cache cleared successfully');
+                        loadCacheStatus();
+                        // Reload stats to rebuild cache
+                        loadStats();
+                    })
+                    .catch(error => {
+                        console.error('Error clearing cache:', error);
+                        alert('Error clearing cache');
+                    });
+            }
+        }
+        
         // Check JIRA status on page load
         document.addEventListener('DOMContentLoaded', function() {
             checkJiraStatus();
             loadJiraStatusCounts();
+            loadCacheStatus();
+            
+            // Update cache status every 30 seconds
+            setInterval(loadCacheStatus, 30000);
+            setInterval(loadCacheStatus, 30000);
         });
     </script>
 </body>
