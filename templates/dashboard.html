@@ -21,6 +21,21 @@
         .stat-card.closed { border-left-color: #6c757d; }
         .stat-card.reviewers { border-left-color: #e83e8c; }
         
+        .jira-status-card {
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .jira-status-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            background-color: rgba(0,123,255,0.05);
+        }
+        .jira-status-card:active {
+            transform: translateY(0px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
         .loading {
             display: none;
         }
@@ -56,10 +71,10 @@
         }
         
         .reviewer-avatar {
-            width: 32px;
-            height: 32px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            margin-right: 10px;
+            margin-right: 6px;
         }
         
         .reviewer-stats {
@@ -151,6 +166,60 @@
             background-color: #e7f1ff;
             color: #0a58ca;
         }
+        
+        /* Reviewers list styling for better layout */
+        .reviewers-container {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+        
+        .reviewers-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .reviewers-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        .reviewers-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        
+        .reviewers-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        /* Ensure equal height cards */
+        .equal-height-row {
+            display: flex;
+            align-items: stretch;
+        }
+        
+        .equal-height-row .card {
+            min-height: 400px;
+            max-height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .equal-height-row .card-body {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .reviewers-list-container {
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        
+        .jira-content-container {
+            flex-grow: 1;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -209,12 +278,12 @@
         <div class="row mb-4" id="statsRow">
             <div class="col-md-4">
                 <div class="card stat-card available h-100" data-type="open">
-                    <div class="card-body text-center">
-                        <i class="fas fa-code-branch fa-3x text-success mb-3"></i>
-                        <h2 class="card-title text-success" id="availableCount">-</h2>
-                        <p class="card-text">Available PRs</p>
+                    <div class="card-body text-center py-2">
+                        <i class="fas fa-code-branch fa-2x text-success mb-2"></i>
+                        <h3 class="card-title text-success mb-1" id="availableCount">-</h3>
+                        <p class="card-text small mb-0">Available PRs</p>
                         <div class="loading">
-                            <div class="spinner-border text-success" role="status"></div>
+                            <div class="spinner-border spinner-border-sm text-success" role="status"></div>
                         </div>
                     </div>
                 </div>
@@ -222,12 +291,12 @@
             
             <div class="col-md-4">
                 <div class="card stat-card labeled h-100" data-type="labeled">
-                    <div class="card-body text-center">
-                        <i class="fas fa-tags fa-3x text-primary mb-3"></i>
-                        <h2 class="card-title text-primary" id="labeledCount">-</h2>
-                        <p class="card-text">Labeled PRs</p>
+                    <div class="card-body text-center py-2">
+                        <i class="fas fa-tags fa-2x text-primary mb-2"></i>
+                        <h3 class="card-title text-primary mb-1" id="labeledCount">-</h3>
+                        <p class="card-text small mb-0">Labeled PRs</p>
                         <div class="loading">
-                            <div class="spinner-border text-primary" role="status"></div>
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                         </div>
                     </div>
                 </div>
@@ -235,33 +304,179 @@
             
             <div class="col-md-4">
                 <div class="card stat-card closed h-100" data-type="closed">
-                    <div class="card-body text-center">
-                        <i class="fas fa-check-circle fa-3x text-secondary mb-3"></i>
-                        <h2 class="card-title text-secondary" id="closedCount">-</h2>
-                        <p class="card-text">Closed PRs</p>
+                    <div class="card-body text-center py-2">
+                        <i class="fas fa-check-circle fa-2x text-secondary mb-2"></i>
+                        <h3 class="card-title text-secondary mb-1" id="closedCount">-</h3>
+                        <p class="card-text small mb-0">Closed PRs</p>
                         <div class="loading">
-                            <div class="spinner-border text-secondary" role="status"></div>
+                            <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- Reviewers Statistics Card -->
+        <!-- JIRA Status Cards -->
         <div class="row mb-4">
-            <div class="col-md-8 mx-auto">
-                <div class="card stat-card reviewers h-100" data-type="reviewers">
-                    <div class="card-body">
-                        <div class="text-center mb-3">
-                            <i class="fas fa-users fa-3x text-info mb-2"></i>
-                            <h5 class="card-title text-info">PR Reviewers</h5>
-                            <p class="text-muted">Click on reviewer to see their PRs</p>
+            <div class="col-12">
+                <h5 class="text-center mb-3"><i class="fas fa-clipboard-list"></i> JIRA Ticket Status Overview</h5>
+            </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('New')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-plus-circle fa-xl text-primary mb-2"></i>
+                        <h3 class="card-title text-primary mb-1" id="newCount">-</h3>
+                        <p class="card-text mb-0">New</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                         </div>
-                        <div id="reviewersList">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Work in progress')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-cogs fa-xl text-warning mb-2"></i>
+                        <h3 class="card-title text-warning mb-1" id="workInProgressCount">-</h3>
+                        <p class="card-text mb-0">In Progress</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Reviewing')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-eye fa-xl text-info mb-2"></i>
+                        <h3 class="card-title text-info mb-1" id="reviewingCount">-</h3>
+                        <p class="card-text mb-0">Reviewing</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('On Hold')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-pause-circle fa-xl text-secondary mb-2"></i>
+                        <h3 class="card-title text-secondary mb-1" id="onHoldCount">-</h3>
+                        <p class="card-text mb-0">On Hold</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Work Complete')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-check-circle fa-xl text-success mb-2"></i>
+                        <h3 class="card-title text-success mb-1" id="workCompleteCount">-</h3>
+                        <p class="card-text mb-0">Complete</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-success" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-2">
+                <div class="card jira-status-card h-100" onclick="showJiraTicketsByStatus('Testing')">
+                    <div class="card-body text-center py-3">
+                        <i class="fas fa-vial fa-xl text-danger mb-2"></i>
+                        <h3 class="card-title text-danger mb-1" id="testingJiraCount">-</h3>
+                        <p class="card-text mb-0">Testing</p>
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm text-danger" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reviewers and JIRA Cards Side by Side -->
+        <div class="row mb-4">
+            <!-- Reviewers Statistics Card -->
+            <div class="col-md-6">
+                <div class="card stat-card reviewers h-100">
+                    <div class="card-body py-2">
+                        <div class="text-center mb-2">
+                            <i class="fas fa-users fa-2x text-info mb-1"></i>
+                            <h6 class="card-title text-info mb-1">PR Reviewers</h6>
+                            <p class="text-muted small mb-0">Click on reviewer to see their PRs</p>
+                        </div>
+                        <div id="reviewersList" style="min-height: 280px; max-height: 280px; overflow-y: auto;">
                             <div class="text-center">
                                 <div class="spinner-border text-info" role="status"></div>
                                 <p class="mt-2">Loading reviewers...</p>
                             </div>
+                        </div>
+                        
+                        <!-- Pagination Controls -->
+                        <div id="reviewersPagination" class="d-flex justify-content-between align-items-center mt-1" style="display: none !important;">
+                            <button class="btn btn-sm btn-outline-info" id="prevReviewersBtn" onclick="changeReviewersPage(-1, event)">
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </button>
+                            <span id="reviewersPageInfo" class="text-muted small">Page 1 of 1</span>
+                            <button class="btn btn-sm btn-outline-info" id="nextReviewersBtn" onclick="changeReviewersPage(1, event)">
+                                Next <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- JIRA Integration Card -->
+            <div class="col-md-6">
+                <div class="card border-warning h-100">
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <i class="fas fa-bug fa-3x text-warning mb-2"></i>
+                            <h5 class="card-title text-warning">JIRA Ticket Integration</h5>
+                            <p class="text-muted">Upload JIRA data to display ticket status</p>
+                        </div>
+                        
+                        <div id="jiraStatus" class="mb-3">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> No JIRA data loaded
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="jiraFile" class="form-label">Upload JIRA Export File (CSV)</label>
+                            <input type="file" class="form-control" id="jiraFile" accept=".csv">
+                            <div class="form-text">
+                                <strong>CSV format:</strong> Issue key, Summary, Issue Type, Status, Priority, Assignee, Reporter, Created, Updated, Resolved
+                            </div>
+                            
+                            <!-- Last Upload Date Display -->
+                            <div id="lastUploadInfo" class="mt-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-clock"></i> <span id="lastUploadText">No file uploaded yet</span>
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-warning btn-sm" onclick="uploadJiraFile()">
+                                <i class="fas fa-upload"></i> Upload
+                            </button>
+                            <button type="button" class="btn btn-info btn-sm" onclick="viewJiraTickets()">
+                                <i class="fas fa-list"></i> View
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearJiraData()">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                            <button type="button" class="btn btn-outline-info btn-sm" onclick="checkJiraStatus()">
+                                <i class="fas fa-refresh"></i> Refresh
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -274,7 +489,20 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="modalTitle">Pull Requests</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="text" 
+                                   class="form-control form-control-sm" 
+                                   id="prSearchInput" 
+                                   placeholder="Search PRs..." 
+                                   style="width: 200px;"
+                                   onkeyup="filterPRs()">
+                            <select class="form-select form-select-sm" id="sortSelect" style="width: auto;">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="most_recent">Recently Updated</option>
+                            </select>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
                     </div>
                     <div class="modal-body" id="modalBody">
                         <div class="text-center">
@@ -303,6 +531,37 @@
                 </div>
             </div>
         </div>
+        
+        <!-- JIRA Tickets Modal -->
+        <div class="modal fade" id="jiraModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="jiraModalTitle">JIRA Tickets</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="jiraModalBody">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status"></div>
+                            <p>Loading JIRA tickets...</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer pagination-controls" id="jiraModalFooter" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <button class="btn btn-sm btn-outline-secondary" id="prevJiraBtn" onclick="changeJiraPage(-1, event)">
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </button>
+                            <span id="jiraPageInfo" class="text-muted">Page 1 of 1</span>
+                            <button class="btn btn-sm btn-outline-secondary" id="nextJiraBtn" onclick="changeJiraPage(1, event)">
+                                Next <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Testing Tickets Modal -->
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -310,6 +569,43 @@
         let currentMonth = '';
         let currentLabels = [];
         let currentRepo = 'rakeshreddyperam/testing';
+        let requestQueue = new Map(); // Prevent duplicate requests
+        let prModalInstance = null; // Store modal instance
+        
+        // Pagination variables for reviewers
+        let allReviewers = []; // Store all reviewers data
+        let currentReviewersPage = 1;
+        const reviewersPerPage = 6; // Show 6 reviewers per page
+        
+        // Pagination variables for JIRA tickets
+        let allJiraTickets = []; // Store all JIRA tickets data
+        let currentJiraPage = 1;
+        const jiraTicketsPerPage = 10; // Show 10 JIRA tickets per page
+        
+        // Debounce function to prevent too many rapid requests
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+        
+        // Modal cleanup utility function
+        function cleanupModals() {
+            // Remove any lingering modal backdrops
+            document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+                backdrop.remove();
+            });
+            // Restore body state
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
         
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -334,12 +630,22 @@
                 loadReviewerStats();
             });
             
-            // Card click handlers
+            // Card click handlers (exclude testing card which has its own handler)
             document.querySelectorAll('.stat-card').forEach(card => {
                 card.addEventListener('click', function() {
                     const type = this.dataset.type;
-                    showPRDetails(type);
+                    if (type) { // Only handle cards with data-type attribute
+                        showPRDetails(type);
+                    }
                 });
+            });
+            
+            // Add safety cleanup for any lingering modal backdrops
+            document.addEventListener('click', function(e) {
+                // If clicking outside modal content and there are orphaned backdrops, clean them up
+                if (e.target.classList.contains('modal-backdrop')) {
+                    cleanupModals();
+                }
             });
         });
         
@@ -374,9 +680,21 @@
             } else if (allLabelsCheckbox && allLabelsCheckbox.checked && currentLabels.length > 0) {
                 toggle.textContent = 'All Labels';
             } else if (currentLabels.length === 1) {
-                toggle.textContent = currentLabels[0];
+                // Handle special "none" label display
+                const labelText = currentLabels[0] === 'none' ? 'None (No Labels)' : currentLabels[0];
+                toggle.textContent = labelText;
             } else {
-                toggle.textContent = `${currentLabels.length} labels selected`;
+                // Count how many are actual labels vs "none"
+                const hasNone = currentLabels.includes('none');
+                const actualLabels = currentLabels.filter(l => l !== 'none');
+                
+                if (hasNone && actualLabels.length === 0) {
+                    toggle.textContent = 'None (No Labels)';
+                } else if (hasNone && actualLabels.length > 0) {
+                    toggle.textContent = `None + ${actualLabels.length} labels`;
+                } else {
+                    toggle.textContent = `${currentLabels.length} labels selected`;
+                }
             }
         }
         
@@ -435,6 +753,25 @@
                     separator.className = 'dropdown-divider my-1';
                     menu.appendChild(separator);
                     
+                    // Add "None" option for PRs with no labels
+                    const noneItem = document.createElement('div');
+                    noneItem.className = 'checkbox-dropdown-item';
+                    const noneChecked = currentLabels.includes('none');
+                    if (noneChecked) {
+                        noneItem.classList.add('checked');
+                    }
+                    
+                    noneItem.innerHTML = `
+                        <input type="checkbox" id="label-none" value="none" ${noneChecked ? 'checked' : ''}>
+                        <label for="label-none" class="mb-0"><em>None (No Labels)</em></label>
+                    `;
+                    menu.appendChild(noneItem);
+                    
+                    // Add separator before actual labels
+                    const separator2 = document.createElement('hr');
+                    separator2.className = 'dropdown-divider my-1';
+                    menu.appendChild(separator2);
+                    
                     // Add label options
                     labels.forEach((label, index) => {
                         const item = document.createElement('div');
@@ -456,8 +793,9 @@
                         checkbox.addEventListener('change', function() {
                             if (this.id === 'label-all') {
                                 if (this.checked) {
-                                    // Select all labels
-                                    currentLabels = [...labels]; // Copy all available labels
+                                    // Select all labels (including None)
+                                    currentLabels = ['none', ...labels]; // Include none and all available labels
+                                    console.log('All Labels selected, currentLabels:', currentLabels);
                                     menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                                         if (cb.id !== 'label-all') {
                                             cb.checked = true;
@@ -467,6 +805,7 @@
                                 } else {
                                     // Clear all selections
                                     currentLabels = [];
+                                    console.log('All Labels deselected, currentLabels:', currentLabels);
                                     menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                                         if (cb.id !== 'label-all') {
                                             cb.checked = false;
@@ -477,23 +816,28 @@
                             } else {
                                 // Handle individual label selection
                                 const labelValue = this.value;
+                                console.log('Individual label clicked:', labelValue, 'checked:', this.checked);
+                                
                                 if (this.checked) {
                                     if (!currentLabels.includes(labelValue)) {
                                         currentLabels.push(labelValue);
                                     }
                                     this.closest('.checkbox-dropdown-item').classList.add('checked');
                                 } else {
-                                    currentLabels = currentLabels.filter(l => l !== labelValue);
+                                    currentLabels = currentLabels.filter(label => label !== labelValue);
                                     this.closest('.checkbox-dropdown-item').classList.remove('checked');
                                 }
                                 
-                                // Update "All Labels" checkbox based on selection state
+                                console.log('After individual selection, currentLabels:', currentLabels);
+                                
+                                // Update "All Labels" checkbox state
+                                const totalSelectableItems = labels.length + 1; // +1 for "none"
                                 const allCheckbox = menu.querySelector('#label-all');
-                                allCheckbox.checked = currentLabels.length === labels.length;
+                                allCheckbox.checked = currentLabels.length === totalSelectableItems;
                             }
                             
                             updateLabelDropdownText();
-                            loadStats();
+                            debouncedLoadStats(); // Use debounced version for filter changes
                         });
                     });
                     
@@ -568,19 +912,33 @@
                             }
                             
                             updateLabelDropdownText();
-                            loadStats();
+                            debouncedLoadStats(); // Use debounced version for filter changes
                         });
                     });
                 });
         }
         
+        // Create debounced version of loadStats for filter changes
+        const debouncedLoadStats = debounce(loadStats, 300); // 300ms delay
+        
         function loadStats() {
+            const requestKey = 'loadStats';
+            
+            // Prevent duplicate requests
+            if (requestQueue.has(requestKey)) {
+                return;
+            }
+            
             showLoading(true);
+            requestQueue.set(requestKey, true);
             
             const params = new URLSearchParams();
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             currentLabels.forEach(label => params.append('labels', label));
+            
+            console.log('Loading stats with currentLabels:', currentLabels);
+            console.log('Stats URL:', `/api/pr-stats?${params}`);
             
             fetch(`/api/pr-stats?${params}`)
                 .then(response => response.json())
@@ -589,10 +947,12 @@
                     document.getElementById('labeledCount').textContent = stats.labeled_count;
                     document.getElementById('closedCount').textContent = stats.closed_count;
                     showLoading(false);
+                    requestQueue.delete(requestKey);
                 })
                 .catch(error => {
                     console.error('Error loading stats:', error);
                     showLoading(false);
+                    requestQueue.delete(requestKey);
                 });
         }
         
@@ -606,7 +966,27 @@
         }
         
         function showPRDetails(type) {
-            const modal = new bootstrap.Modal(document.getElementById('prModal'));
+            // Initialize modal instance if not already created
+            if (!prModalInstance) {
+                const modalElement = document.getElementById('prModal');
+                prModalInstance = new bootstrap.Modal(modalElement, {
+                    backdrop: 'static', // Prevent closing by clicking outside
+                    keyboard: true // Allow closing with ESC key
+                });
+                
+                // Add event listeners for proper cleanup
+                modalElement.addEventListener('hidden.bs.modal', function () {
+                    // Clean up any remaining backdrops
+                    document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+                        backdrop.remove();
+                    });
+                    // Restore body scroll
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                });
+            }
+            
             const modalTitle = document.getElementById('modalTitle');
             const modalBody = document.getElementById('modalBody');
             
@@ -626,10 +1006,11 @@
                 </div>
             `;
             
-            modal.show();
+            prModalInstance.show();
             
-            // Fetch PR details
-            const params = new URLSearchParams({ type });
+            // Fetch PR details (always include comments for last comment info)
+            const sortBy = document.getElementById('sortSelect').value || 'newest';
+            const params = new URLSearchParams({ type, sort: sortBy, include_comments: 'true' });
             if (currentMonth) params.append('month', currentMonth);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
@@ -647,6 +1028,101 @@
                     let html = '';
                     prs.forEach(pr => {
                         const createdDate = new Date(pr.created_at).toLocaleDateString();
+                        const updatedDate = new Date(pr.updated_at).toLocaleDateString();
+                        
+                        let lastCommentInfo = '';
+                        // Show last comment information only for open PRs (available/labeled)
+                        if (pr.state === 'open' && pr.last_comment_at) {
+                            const lastCommentDate = new Date(pr.last_comment_at).toLocaleDateString() + ' at ' + new Date(pr.last_comment_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                            lastCommentInfo = `
+                                <br>
+                                <small class="text-info">
+                                    <i class="fas fa-comment"></i> Last comment: ${lastCommentDate}
+                                </small>
+                            `;
+                        } else if (pr.state === 'open') {
+                            // Show "No comments" only for open PRs that have no comments
+                            lastCommentInfo = `
+                                <br>
+                                <small class="text-muted">
+                                    <i class="fas fa-comment"></i> No comments
+                                </small>
+                            `;
+                        }
+                        // For closed PRs, don't show comment information at all
+                        
+                        // Review status info for open PRs
+                        let reviewStatusInfo = '';
+                        if (pr.state === 'open' && pr.review_status) {
+                            const status = pr.review_status;
+                            let statusBadge = '';
+                            let statusText = '';
+                            
+                            if (status.approved && !status.changes_requested) {
+                                statusBadge = 'bg-success';
+                                statusText = `Approved (${status.approval_count})`;
+                                if (status.mergeable && status.status_checks === 'success') {
+                                    statusText += ' - Ready to merge';
+                                } else if (!status.mergeable) {
+                                    statusText += ' - Merge conflicts';
+                                } else if (status.status_checks === 'failure') {
+                                    statusText += ' - Checks failing';
+                                } else if (status.status_checks === 'pending') {
+                                    statusText += ' - Checks pending';
+                                }
+                            } else if (status.changes_requested) {
+                                statusBadge = 'bg-warning';
+                                statusText = 'Changes requested';
+                            } else if (status.pending_review) {
+                                statusBadge = 'bg-info';
+                                statusText = 'Pending review';
+                            } else if (status.review_count > 0) {
+                                statusBadge = 'bg-secondary';
+                                statusText = `Reviews: ${status.review_count}`;
+                            }
+                            
+                            if (statusText) {
+                                reviewStatusInfo = `
+                                    <br>
+                                    <small class="${statusBadge} text-white px-2 py-1 rounded">
+                                        <i class="fas fa-code-branch"></i> ${statusText}
+                                    </small>
+                                `;
+                            }
+                        }
+                        
+                        // JIRA tickets info
+                        let jiraInfo = '';
+                        if (pr.jira_tickets && pr.jira_tickets.length > 0) {
+                            console.log('JIRA tickets found:', pr.jira_tickets);
+                            const jiraTickets = pr.jira_tickets.map(ticket => {
+                                console.log('Processing ticket:', ticket);
+                                let badgeClass = 'bg-secondary';
+                                if (ticket.status_category === 'Done') {
+                                    badgeClass = 'bg-success';
+                                } else if (ticket.status_category === 'In Progress') {
+                                    badgeClass = 'bg-warning';
+                                } else if (ticket.status_category === 'To Do') {
+                                    badgeClass = 'bg-info';
+                                }
+                                
+                                // Ensure link exists
+                                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                                console.log('Ticket link:', ticketLink);
+                                
+                                return `
+                                    <a href="${ticketLink}" target="_blank" class="text-decoration-none">
+                                        <span class="badge ${badgeClass} me-1" title="${ticket.summary} - ${ticket.assignee}">
+                                            <i class="fas fa-bug"></i> ${ticket.key}: ${ticket.status}
+                                            <i class="fas fa-external-link-alt ms-1"></i>
+                                        </span>
+                                    </a>
+                                `;
+                            }).join('');
+                            
+                            jiraInfo = `<div class="mt-1">${jiraTickets}</div>`;
+                        }
+                        
                         const labels = pr.labels.map(label => 
                             `<span class="badge bg-primary label-badge">${label}</span>`
                         ).join('');
@@ -661,8 +1137,11 @@
                                             </a>
                                         </h6>
                                         <small class="text-muted">
-                                            by ${pr.user} • ${createdDate}
+                                            by ${pr.user} • Created: ${createdDate} • Updated: ${updatedDate}
                                         </small>
+                                        ${lastCommentInfo}
+                                        ${reviewStatusInfo}
+                                        ${jiraInfo}
                                         ${labels ? `<div class="mt-1">${labels}</div>` : ''}
                                     </div>
                                     <span class="badge bg-${pr.state === 'open' ? 'success' : 'secondary'} ms-2">
@@ -677,8 +1156,13 @@
                 })
                 .catch(error => {
                     console.error('Error loading PR details:', error);
-                                        modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
+                    modalBody.innerHTML = '<p class="text-center text-danger">Error loading pull requests.</p>';
                 });
+            
+            // Add event listener for sort change
+            document.getElementById('sortSelect').onchange = function() {
+                showPRDetails(type);
+            };
         }
         
 
@@ -710,48 +1194,16 @@
                                 <p>No reviewers assigned to open PRs</p>
                             </div>
                         `;
+                        document.getElementById('reviewersPagination').style.display = 'none';
                         return;
                     }
                     
-                    let html = '';
-                    data.reviewers.forEach(reviewer => {
-                        const avatarImg = reviewer.avatar_url ? 
-                            `<img src="${reviewer.avatar_url}" alt="${reviewer.name}" class="reviewer-avatar">` :
-                            `<div class="reviewer-avatar bg-secondary d-flex align-items-center justify-content-center text-white">
-                                <i class="fas fa-user"></i>
-                             </div>`;
-                        
-                        html += `
-                            <div class="reviewer-item" data-reviewer="${reviewer.name}">
-                                <div class="reviewer-stats">
-                                    <div class="d-flex align-items-center">
-                                        ${avatarImg}
-                                        <div>
-                                            <strong>${reviewer.name}</strong>
-                                            <br>
-                                            <small class="text-muted">Assigned reviewer</small>
-                                        </div>
-                                    </div>
-                                    <div class="text-end">
-                                        <span class="badge bg-info fs-6">${reviewer.count}</span>
-                                        <br>
-                                        <small class="text-muted">PRs to review</small>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    });
+                    // Store all reviewers data for pagination
+                    allReviewers = data.reviewers;
+                    currentReviewersPage = 1;
                     
-                    reviewersList.innerHTML = html;
-                    
-                    // Add click handlers for reviewers
-                    document.querySelectorAll('.reviewer-item').forEach(item => {
-                        item.addEventListener('click', function(e) {
-                            e.stopPropagation(); // Prevent event bubbling to stat-card handler
-                            const reviewerName = this.dataset.reviewer;
-                            showReviewerPRs(reviewerName);
-                        });
-                    });
+                    // Display first page
+                    displayReviewersPage();
                 })
                 .catch(error => {
                     console.error('Error loading reviewer stats:', error);
@@ -761,7 +1213,257 @@
                             <p>Error loading reviewer statistics</p>
                         </div>
                     `;
+                    document.getElementById('reviewersPagination').style.display = 'none';
                 });
+        }
+        
+        function displayReviewersPage() {
+            const reviewersList = document.getElementById('reviewersList');
+            const totalPages = Math.ceil(allReviewers.length / reviewersPerPage);
+            
+            if (totalPages <= 1) {
+                document.getElementById('reviewersPagination').style.display = 'none';
+            } else {
+                document.getElementById('reviewersPagination').style.display = 'flex';
+            }
+            
+            const startIndex = (currentReviewersPage - 1) * reviewersPerPage;
+            const endIndex = startIndex + reviewersPerPage;
+            const currentPageReviewers = allReviewers.slice(startIndex, endIndex);
+            
+            let html = '';
+            currentPageReviewers.forEach(reviewer => {
+                const avatarImg = reviewer.avatar_url ? 
+                    `<img src="${reviewer.avatar_url}" alt="${reviewer.name}" class="reviewer-avatar">` :
+                    `<div class="reviewer-avatar bg-secondary d-flex align-items-center justify-content-center text-white">
+                        <i class="fas fa-user"></i>
+                     </div>`;
+                
+                html += `
+                    <div class="reviewer-item" data-reviewer="${reviewer.name}" style="padding: 2px 6px; margin-bottom: 3px;">
+                        <div class="reviewer-stats">
+                            <div class="d-flex align-items-center">
+                                ${avatarImg}
+                                <div class="ms-2">
+                                    <small><strong>${reviewer.name}</strong></small>
+                                    <br>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Assigned reviewer</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-info" style="font-size: 0.65rem;">${reviewer.count}</span>
+                                <br>
+                                <small class="text-muted" style="font-size: 0.6rem;">PRs</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            reviewersList.innerHTML = html;
+            
+            // Add click handlers for reviewers
+            document.querySelectorAll('.reviewer-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Prevent event bubbling to stat-card handler
+                    const reviewerName = this.dataset.reviewer;
+                    showReviewerPRs(reviewerName);
+                });
+            });
+            
+            // Update pagination controls
+            updateReviewersPagination(totalPages);
+        }
+        
+        function updateReviewersPagination(totalPages) {
+            document.getElementById('reviewersPageInfo').textContent = `Page ${currentReviewersPage} of ${totalPages}`;
+            document.getElementById('prevReviewersBtn').disabled = currentReviewersPage === 1;
+            document.getElementById('nextReviewersBtn').disabled = currentReviewersPage === totalPages;
+        }
+        
+        function changeReviewersPage(direction, event) {
+            // Prevent event from bubbling up to parent elements
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            
+            const totalPages = Math.ceil(allReviewers.length / reviewersPerPage);
+            const newPage = currentReviewersPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentReviewersPage = newPage;
+                displayReviewersPage();
+            }
+        }
+
+        // JIRA Tickets Pagination Functions
+        function displayJiraTicketsPage() {
+            const modalBody = document.getElementById('jiraModalBody');
+            const startIndex = (currentJiraPage - 1) * jiraTicketsPerPage;
+            const endIndex = startIndex + jiraTicketsPerPage;
+            const ticketsToShow = allJiraTickets.slice(startIndex, endIndex);
+            
+            let html = `
+                <div class="mb-3">
+                    <h6><i class="fas fa-bug"></i> Total Tickets: ${allJiraTickets.length}</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Key</th>
+                                <th>Status</th>
+                                <th>Summary</th>
+                                <th>Assignee</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            ticketsToShow.forEach(ticket => {
+                const statusColor = getStatusColor(ticket.status_category);
+                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                html += `
+                    <tr>
+                        <td>
+                            <a href="${ticketLink}" target="_blank" class="text-decoration-none">
+                                <strong>${ticket.key}</strong>
+                                <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-${statusColor}" title="${ticket.status_category}">
+                                ${ticket.status}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
+                                ${ticket.summary}
+                            </div>
+                            ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
+                        </td>
+                        <td>${ticket.assignee}</td>
+                        <td>
+                            <span class="badge bg-${getPriorityColor(ticket.priority)}">
+                                ${ticket.priority}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            modalBody.innerHTML = html;
+            
+            // Update pagination controls
+            const totalPages = Math.ceil(allJiraTickets.length / jiraTicketsPerPage);
+            updateJiraPagination(totalPages);
+        }
+
+        function updateJiraPagination(totalPages) {
+            document.getElementById('jiraPageInfo').textContent = `Page ${currentJiraPage} of ${totalPages}`;
+            document.getElementById('prevJiraBtn').disabled = currentJiraPage === 1;
+            document.getElementById('nextJiraBtn').disabled = currentJiraPage === totalPages;
+        }
+
+        function changeJiraPage(direction, event) {
+            // Prevent event from bubbling up to parent elements
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            
+            const totalPages = Math.ceil(allJiraTickets.length / jiraTicketsPerPage);
+            const newPage = currentJiraPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentJiraPage = newPage;
+                // Check if we're in a filtered view (status-specific) or all tickets view
+                const modalTitle = document.getElementById('jiraModalTitle').textContent;
+                if (modalTitle.includes(' - ')) {
+                    const status = modalTitle.split(' - ')[1];
+                    displayJiraTicketsPageWithStatus(status);
+                } else {
+                    displayJiraTicketsPage();
+                }
+            }
+        }
+
+        // Function for displaying paginated tickets with status filter
+        function displayJiraTicketsPageWithStatus(status) {
+            const modalBody = document.getElementById('jiraModalBody');
+            const startIndex = (currentJiraPage - 1) * jiraTicketsPerPage;
+            const endIndex = startIndex + jiraTicketsPerPage;
+            const ticketsToShow = allJiraTickets.slice(startIndex, endIndex);
+            
+            let html = `
+                <div class="mb-3">
+                    <h6><i class="fas fa-ticket-alt text-primary"></i> ${status} Tickets: ${allJiraTickets.length}</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-primary">
+                            <tr>
+                                <th>Key</th>
+                                <th>Status</th>
+                                <th>Summary</th>
+                                <th>Assignee</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            ticketsToShow.forEach(ticket => {
+                const statusColor = getStatusColor(ticket.status_category);
+                const ticketLink = ticket.link || `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                html += `
+                    <tr>
+                        <td>
+                            <a href="${ticketLink}" target="_blank" class="text-decoration-none">
+                                <strong>${ticket.key}</strong>
+                                <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-${statusColor}" title="${ticket.status_category || ticket.status}">
+                                ${ticket.status}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 300px;" title="${ticket.summary}">
+                                ${ticket.summary}
+                            </div>
+                            ${ticket.description ? `<small class="text-muted">${ticket.description}</small>` : ''}
+                        </td>
+                        <td>${ticket.assignee || 'Unassigned'}</td>
+                        <td>
+                            <span class="badge bg-${getPriorityColor(ticket.priority)}">
+                                ${ticket.priority || 'None'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            modalBody.innerHTML = html;
+            
+            // Update pagination controls
+            const totalPages = Math.ceil(allJiraTickets.length / jiraTicketsPerPage);
+            updateJiraPagination(totalPages);
         }
         
         function showReviewerPRs(reviewerName) {
@@ -831,6 +1533,447 @@
                     modalBody.innerHTML = '<p class="text-center text-danger">Error loading PRs for this reviewer.</p>';
                 });
         }
+        
+        // JIRA Integration Functions
+        function uploadJiraFile() {
+            const fileInput = document.getElementById('jiraFile');
+            if (!fileInput.files[0]) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            // Show loading
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+            btn.disabled = true;
+            
+            fetch('/api/jira/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update the permanent last upload display
+                const now = new Date();
+                const uploadTime = `${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`;
+                document.getElementById('lastUploadText').textContent = `Last uploaded: ${uploadTime}`;
+                
+                // Show success message
+                document.getElementById('jiraStatus').innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i> JIRA data uploaded successfully! 
+                        Loaded ${data.tickets_count} tickets.
+                    </div>
+                `;
+                
+                // Clear file input
+                fileInput.value = '';
+                
+                // Debug log
+                console.log('JIRA upload successful, refreshing JIRA status cards...');
+                
+                // Only refresh JIRA status counts, not the entire dashboard
+                refreshJiraData();
+                
+                // Refresh current PR display if modal is open
+                const modal = document.getElementById('prModal');
+                if (modal.classList.contains('show')) {
+                    // Re-trigger the current view to show JIRA data
+                    const currentType = modal.getAttribute('data-current-type');
+                    if (currentType) {
+                        showPRDetails(currentType);
+                    }
+                }
+            })
+            .catch(error => {
+                document.getElementById('jiraStatus').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                    </div>
+                `;
+            })
+            .finally(() => {
+                // Restore button
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
+        }
+        
+        function clearJiraData() {
+            if (!confirm('Are you sure you want to clear all JIRA data?')) {
+                return;
+            }
+            
+            fetch('/api/jira/clear', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Reset the permanent last upload display
+                document.getElementById('lastUploadText').textContent = 'No file uploaded yet';
+                
+                document.getElementById('jiraStatus').innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> JIRA data cleared successfully
+                    </div>
+                `;
+                
+                // Only refresh JIRA status counts, not the entire dashboard
+                refreshJiraData();
+            })
+            .catch(error => {
+                document.getElementById('jiraStatus').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                    </div>
+                `;
+            });
+        }
+        
+        function checkJiraStatus() {
+            fetch('/api/jira/status')
+            .then(response => response.json())
+            .then(data => {
+                // Update the permanent last upload display
+                const lastUploadTextElement = document.getElementById('lastUploadText');
+                if (data.uploaded_at) {
+                    const uploadDate = new Date(data.uploaded_at);
+                    lastUploadTextElement.textContent = `Last uploaded: ${uploadDate.toLocaleDateString()} at ${uploadDate.toLocaleTimeString()}`;
+                } else {
+                    lastUploadTextElement.textContent = 'No file uploaded yet';
+                }
+                
+                // Update the status alert
+                if (data.loaded) {
+                    document.getElementById('jiraStatus').innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> JIRA data loaded: ${data.tickets_count} tickets
+                            ${data.sample_tickets.length > 0 ? `<br><small>Sample tickets: ${data.sample_tickets.join(', ')}</small>` : ''}
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('jiraStatus').innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> No JIRA data loaded
+                        </div>
+                    `;
+                }
+                
+                // Only refresh JIRA status counts when checking JIRA status
+                refreshJiraData();
+            })
+            .catch(error => {
+                document.getElementById('jiraStatus').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> Error checking JIRA status
+                    </div>
+                `;
+            });
+        }
+        
+        // Function to refresh only JIRA-related components (not PR data)
+        function refreshJiraData() {
+            console.log('Refreshing JIRA data only...');
+            loadJiraStatusCounts();
+        }
+
+        function loadJiraStatusCounts() {
+            // Show loading for all status cards
+            document.querySelectorAll('.jira-status-card .loading').forEach(loader => {
+                loader.style.display = 'block';
+            });
+            
+            fetch('/api/jira/tickets')
+                .then(response => response.json())
+                .then(data => {
+                    // Initialize counts
+                    const statusCounts = {
+                        'New': 0,
+                        'Work in progress': 0,
+                        'Reviewing': 0,
+                        'On Hold': 0,
+                        'Work Complete': 0,
+                        'Testing': 0
+                    };
+                    
+                    // Count tickets by status
+                    if (data.tickets && Array.isArray(data.tickets)) {
+                        data.tickets.forEach(ticket => {
+                            const status = ticket.status;
+                            if (statusCounts.hasOwnProperty(status)) {
+                                statusCounts[status]++;
+                            }
+                        });
+                    }
+                    
+                    // Update the UI
+                    document.getElementById('newCount').textContent = statusCounts['New'];
+                    document.getElementById('workInProgressCount').textContent = statusCounts['Work in progress'];
+                    document.getElementById('reviewingCount').textContent = statusCounts['Reviewing'];
+                    document.getElementById('onHoldCount').textContent = statusCounts['On Hold'];
+                    document.getElementById('workCompleteCount').textContent = statusCounts['Work Complete'];
+                    document.getElementById('testingJiraCount').textContent = statusCounts['Testing'];
+                    
+                    // Hide loading indicators
+                    document.querySelectorAll('.jira-status-card .loading').forEach(loader => {
+                        loader.style.display = 'none';
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading JIRA status counts:', error);
+                    // Hide loading and show error state
+                    document.querySelectorAll('.jira-status-card .loading').forEach(loader => {
+                        loader.style.display = 'none';
+                    });
+                    // Set counts to 0 on error
+                    ['newCount', 'workInProgressCount', 'reviewingCount', 'onHoldCount', 'workCompleteCount', 'testingJiraCount'].forEach(id => {
+                        document.getElementById(id).textContent = '0';
+                    });
+                });
+        }
+        
+        function showJiraTicketsByStatus(status) {
+            try {
+                const modalElement = document.getElementById('jiraModal');
+                const modalTitle = document.getElementById('jiraModalTitle');
+                const modalBody = document.getElementById('jiraModalBody');
+                
+                if (!modalElement) {
+                    console.error('JIRA modal element not found');
+                    return;
+                }
+                
+                if (!modalTitle) {
+                    console.error('JIRA modal title element not found');
+                    return;
+                }
+                
+                if (!modalBody) {
+                    console.error('JIRA modal body element not found');
+                    return;
+                }
+                
+                const modal = new bootstrap.Modal(modalElement);
+                
+                // Set modal title
+                modalTitle.textContent = `JIRA Tickets - ${status}`;
+                
+                // Show loading
+                modalBody.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border" role="status"></div>
+                        <p class="mt-2">Loading ${status} tickets...</p>
+                    </div>
+                `;
+                
+                modal.show();
+                
+                // Fetch filtered tickets
+                fetch('/api/jira/tickets')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.tickets && Array.isArray(data.tickets)) {
+                            const filteredTickets = data.tickets.filter(ticket => ticket.status === status);
+                            
+                            if (filteredTickets.length === 0) {
+                                modalBody.innerHTML = `
+                                    <div class="text-center">
+                                        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                                        <h5 class="text-muted">No ${status} tickets found</h5>
+                                        <p class="text-muted">There are no JIRA tickets with "${status}" status in the uploaded data.</p>
+                                    </div>
+                                `;
+                                // Hide pagination for no results
+                                const paginationControls = document.getElementById('jiraModalFooter');
+                                if (paginationControls) {
+                                    paginationControls.style.display = 'none';
+                                }
+                                return;
+                            }
+                            
+                            // Store filtered tickets and reset to first page
+                            allJiraTickets = filteredTickets;
+                            currentJiraPage = 1;
+                            displayJiraTicketsPageWithStatus(status);
+                            
+                            // Show/hide pagination controls based on ticket count
+                            const paginationControls = document.getElementById('jiraModalFooter');
+                            if (paginationControls && filteredTickets.length > jiraTicketsPerPage) {
+                                paginationControls.style.display = 'block';
+                            } else if (paginationControls) {
+                                paginationControls.style.display = 'none';
+                            }
+                        } else {
+                            modalBody.innerHTML = `
+                                <div class="text-center">
+                                    <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                                    <h5 class="text-muted">No JIRA tickets found</h5>
+                                    <p class="text-muted">Upload a JIRA export file to view tickets here.</p>
+                                </div>
+                            `;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching JIRA tickets:', error);
+                        modalBody.innerHTML = `
+                            <div class="text-center">
+                                <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                                <h5 class="text-danger">Error Loading Tickets</h5>
+                                <p class="text-muted">Failed to load JIRA tickets: ${error.message}</p>
+                            </div>
+                        `;
+                    });
+                
+            } catch (error) {
+                console.error('Error in showJiraTicketsByStatus:', error);
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        function viewJiraTickets() {
+            const modal = new bootstrap.Modal(document.getElementById('jiraModal'));
+            const modalBody = document.getElementById('jiraModalBody');
+            
+            // Show loading
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border" role="status"></div>
+                    <p>Loading JIRA tickets...</p>
+                </div>
+            `;
+            
+            modal.show();
+            
+            // Fetch JIRA tickets
+            fetch('/api/jira/tickets')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.tickets && data.tickets.length > 0) {
+                        // Store all tickets and reset to first page
+                        allJiraTickets = data.tickets;
+                        currentJiraPage = 1;
+                        displayJiraTicketsPage();
+                        
+                        // Show pagination controls
+                        const paginationControls = document.getElementById('jiraModalFooter');
+                        if (paginationControls && data.tickets.length > jiraTicketsPerPage) {
+                            paginationControls.style.display = 'block';
+                        } else if (paginationControls) {
+                            paginationControls.style.display = 'none';
+                        }
+                    } else {
+                        modalBody.innerHTML = `
+                            <div class="text-center">
+                                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">No JIRA tickets found</h5>
+                                <p class="text-muted">Upload a JIRA export file to view tickets here.</p>
+                            </div>
+                        `;
+                        // Hide pagination if no tickets
+                        const paginationControls = document.getElementById('jiraModalFooter');
+                        if (paginationControls) {
+                            paginationControls.style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading JIRA tickets:', error);
+                    modalBody.innerHTML = `
+                        <div class="text-center text-danger">
+                            <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                            <h5>Error Loading Tickets</h5>
+                            <p>Failed to load JIRA tickets. Please try again.</p>
+                        </div>
+                    `;
+                    // Hide pagination on error
+                    const paginationControls = document.getElementById('jiraModalFooter');
+                    if (paginationControls) {
+                        paginationControls.style.display = 'none';
+                    }
+                });
+        }
+        
+        function getStatusColor(statusCategory) {
+            switch (statusCategory?.toLowerCase()) {
+                case 'done': return 'success';
+                case 'indeterminate': 
+                case 'in progress': return 'warning';
+                case 'new':
+                case 'to do': return 'primary';
+                default: return 'secondary';
+            }
+        }
+        
+        function getPriorityColor(priority) {
+            switch (priority?.toLowerCase()) {
+                case 'highest':
+                case 'critical': return 'danger';
+                case 'high': return 'warning';
+                case 'medium': return 'info';
+                case 'low':
+                case 'lowest': return 'secondary';
+                default: return 'light';
+            }
+        }
+        
+        // PR Search Functionality
+        function filterPRs() {
+            const searchTerm = document.getElementById('prSearchInput').value.toLowerCase();
+            const prItems = document.querySelectorAll('#modalBody .pr-item');
+            
+            prItems.forEach(item => {
+                const prText = item.textContent.toLowerCase();
+                
+                if (prText.includes(searchTerm)) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+            
+            // Show/hide "no results" message
+            const visiblePRs = document.querySelectorAll('#modalBody .pr-item[style="display: block"], #modalBody .pr-item:not([style*="display: none"])');
+            const noResultsMsg = document.getElementById('noSearchResults');
+            
+            if (visiblePRs.length === 0 && searchTerm.trim() !== '') {
+                if (!noResultsMsg) {
+                    const noResults = document.createElement('div');
+                    noResults.id = 'noSearchResults';
+                    noResults.className = 'text-center text-muted mt-3';
+                    noResults.innerHTML = '<i class="fas fa-search"></i> No PRs match your search';
+                    document.getElementById('modalBody').appendChild(noResults);
+                }
+            } else if (noResultsMsg) {
+                noResultsMsg.remove();
+            }
+        }
+        
+        // Clear search when modal is closed
+        document.getElementById('prModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('prSearchInput').value = '';
+            const noResultsMsg = document.getElementById('noSearchResults');
+            if (noResultsMsg) {
+                noResultsMsg.remove();
+            }
+        });
+        
+        // Check JIRA status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkJiraStatus();
+            loadJiraStatusCounts();
+        });
     </script>
     
     <!-- Footer -->

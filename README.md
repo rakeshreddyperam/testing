@@ -1,363 +1,236 @@
-# GitHub PR Dashboard<<<<<<< HEAD
+# GitHub PR Dashboard with JIRA Integration
 
-# GitHub PR Dashboard
-
-A Python Flask web application for monitoring GitHub Pull Requests with interactive dashboard cards and filtering capabilities.
-
-A Python Flask web application for monitoring GitHub Pull Requests with interactive dashboard cards and filtering capabilities.
+A comprehensive Python Flask web application for monitoring GitHub Pull Requests and JIRA tickets with an interactive dashboard, advanced filtering, and real-time analytics.
 
 ## Features
 
-## Features
+### GitHub Integration
+- **Available PRs Card**: Display count and list of open pull requests with pagination
+- **Labeled PRs Card**: Filter PRs by specific labels including "None" for unlabeled PRs  
+- **Closed PRs Card**: Show count and detailed list of closed pull requests
+- **PR Reviewers Card**: Track reviewer workload with pagination (6 reviewers per page)
+- **Multi-Repository Support**: Switch between different GitHub repositories
+- **Advanced Filtering**: Filter by month, labels, and search within PR lists
 
-- **Dashboard Cards**: Display PR statistics with visual cards showing:
+### JIRA Integration
+- **JIRA Status Cards**: Six interactive cards showing ticket counts by status:
+  - New
+  - Work in progress
+  - Reviewing
+  - On Hold
+  - Work Complete
+  - Testing
+- **Clickable Status Cards**: Click any JIRA status card to view filtered tickets
+- **JIRA Ticket Pagination**: Browse tickets with 10 items per page
+- **CSV/Excel Upload**: Upload JIRA export files for data processing
+- **Selective JIRA Refresh**: Refresh only JIRA data without affecting PR stats
 
-  - Available (open) PRs count- **Dashboard Cards**: Display PR statistics with visual cards showing:
+### Performance & User Experience
+- **Parallel Processing**: ThreadPoolExecutor for concurrent API calls
+- **Intelligent Caching**: 15-minute caching system for optimal performance
+- **Responsive Design**: Bootstrap-based mobile-friendly interface
+- **Real-time Updates**: Live data fetching with loading indicators
+- **Compact UI**: Space-efficient card designs for better visibility
+- **Search Functionality**: Quick search within PR and ticket lists
 
-  - PRs filtered by label criteria  - Available (open) PRs count
+### Smart Test Analyzer
+- **Intelligent Test Recommendations**: AI-powered analysis of ticket descriptions
+- **Multi-type Support**: Bug fixes, features, security updates, and more
+- **Priority-based Analysis**: Different recommendations based on ticket priority
+- **Comprehensive Coverage**: Automated, manual, and specialized testing suggestions
 
-  - Closed PRs count  - PRs filtered by label criteria
+## Recent Updates (v2.1.0)
 
-- **Smart Test Analyzer**: Intelligent test recommendation system based on ticket descriptions  - Closed PRs count
-
-- **Interactive Cards**: Click any card to view detailed PR lists- **Interactive Cards**: Click any card to view detailed PR lists
-
-- **Month-based Filtering**: Filter all data by specific months- **Month-based Filtering**: Filter all data by specific months
-
-- **Label Filtering**: Filter PRs by specific labels- **Label Filtering**: Filter PRs by specific labels
-
-- **Responsive Design**: Bootstrap-based responsive UI with enhanced footer- **Responsive Design**: Bootstrap-based responsive UI
-
-- **Real-time Data**: Fetches live data from GitHub API- **Real-time Data**: Fetches live data from GitHub API
-
-
-
-## Recent Updates (v2.1.0)## Setup Instructions
-
-
-
-- ✨ Added Smart Test Analyzer for intelligent test recommendations### Prerequisites
-
+- ✨ Added Smart Test Analyzer for intelligent test recommendations
 - 📊 Enhanced dashboard footer with version information
-
-- 🧹 Cleaned up legacy Jira integration files- Python 3.8 or higher
-
-- 🎨 Improved UI styling and visual enhancements- GitHub Personal Access Token
-
-- Git repository access
+- 🧹 Cleaned up legacy Jira integration files
+- 🎨 Improved UI styling and visual enhancements
 
 ## Setup Instructions
 
-### Installation
-
 ### Prerequisites
+
+- Python 3.8 or higher
+- GitHub Personal Access Token
+- Git repository access
+
+### Installation
 
 1. **Clone or navigate to the project directory**
 
-- Python 3.8 or higher   ```bash
-
-- GitHub Personal Access Token   cd "C:\Users\RP017421\OneDrive - Zelis Healthcare\Testing_Projects\testing github"
-
-- Git repository access   ```
-
-
-
-### Installation2. **Set up Python virtual environment** (already configured)
-
    ```bash
-
-1. **Clone or navigate to the project directory**   # Virtual environment is already created at .venv
-
-   ```bash   ```
-
    cd "C:\Users\RP017421\OneDrive - Zelis Healthcare\Testing_Projects\testing github"
+   ```
 
-   ```3. **Install dependencies** (already installed)
+2. **Set up Python virtual environment** (already configured)
 
    ```bash
-
-2. **Set up Python virtual environment** (already configured)   # Dependencies are already installed in the virtual environment
-
-   ```bash   ```
-
    # Virtual environment is already created at .venv
+   ```
 
-   ```4. **Configure environment variables**
+3. **Install dependencies** (already installed)
 
-   - Copy `.env.example` to `.env`
-
-3. **Install dependencies** (already installed)   - Edit `.env` and add your GitHub configuration:
-
-   ```bash   ```
-
-   # Dependencies are already installed in the virtual environment   GITHUB_TOKEN=your_github_personal_access_token_here
-
-   ```   GITHUB_REPO=owner/repository-name
-
+   ```bash
+   # Dependencies are already installed in the virtual environment
    ```
 
 4. **Configure environment variables**
+   - Create `.env` file in project root
+   - Add your GitHub configuration:
+   ```
+   GITHUB_TOKEN=your_github_personal_access_token_here
+   GITHUB_REPO=owner/repository-name
+   ```
 
-   - Copy `.env.example` to `.env`### Running the Application
+### JIRA Setup
 
-   - Edit `.env` and add your GitHub configuration:
+1. **Export JIRA Data**:
+   - Export tickets from JIRA as CSV or Excel file
+   - Include columns: Key, Summary, Status, Assignee, Priority, Created, Status Category
+   
+2. **Upload to Dashboard**:
+   - Use the JIRA upload button on the dashboard
+   - Select your exported CSV/Excel file
+   - Data will be processed and displayed immediately
 
-   ```#### Option 1: Using VS Code Task
+### Running the Application
 
-   GITHUB_TOKEN=your_github_personal_access_token_here1. Open Command Palette (`Ctrl+Shift+P`)
-
-   GITHUB_REPO=owner/repository-name2. Select "Tasks: Run Task"
-
-   ```3. Choose "Run GitHub PR Dashboard"
-
-
-
-### Running the Application#### Option 2: Using VS Code Debugger
-
-1. Press `F5` or go to Run and Debug panel
-
-#### Option 1: Using VS Code Task2. Select "Python: Flask App" configuration
-
-1. Open Command Palette (`Ctrl+Shift+P`)3. Click the green play button
-
+#### Option 1: Using VS Code Task
+1. Open Command Palette (`Ctrl+Shift+P`)
 2. Select "Tasks: Run Task"
+3. Choose "Run GitHub PR Dashboard"
 
-3. Choose "Run GitHub PR Dashboard"#### Option 3: Using Terminal
-
-```bash
-
-#### Option 2: Using VS Code Debugger"C:/Users/RP017421/OneDrive - Zelis Healthcare/Testing_Projects/testing github/.venv/Scripts/python.exe" app.py
-
-1. Press `F5` or go to Run and Debug panel```
-
+#### Option 2: Using VS Code Debugger
+1. Press `F5` or go to Run and Debug panel
 2. Select "Python: Flask App" configuration
+3. Click the green play button
 
-3. Click the green play button### Accessing the Dashboard
-
-
-
-#### Option 3: Using TerminalOnce running, open your browser and navigate to:
-
-```bash```
-
-"C:/Users/RP017421/OneDrive - Zelis Healthcare/Testing_Projects/testing github/.venv/Scripts/python.exe" app.pyhttp://localhost:5000
-
-``````
-
-
-
-### Accessing the Dashboard## Configuration
-
-
-
-Once running, open your browser and navigate to:### GitHub API Setup
-
+#### Option 3: Using Terminal
+```bash
+"C:/Users/RP017421/OneDrive - Zelis Healthcare/Testing_Projects/testing github/.venv/Scripts/python.exe" app.py
 ```
 
-http://localhost:50001. **Create a Personal Access Token**:
+### Accessing the Dashboard
 
-```   - Go to GitHub Settings > Developer settings > Personal access tokens
+Once running, open your browser and navigate to:
+```
+http://localhost:5000
+```
 
-   - Generate a new token with `repo` permissions
+## Configuration
 
-## Configuration   - Copy the token to your `.env` file
+### GitHub API Setup
 
-
-
-### GitHub API Setup2. **Set Repository**:
-
-   - Update `GITHUB_REPO` in `.env` with format: `owner/repository-name`
-
-1. **Create a Personal Access Token**:   - Example: `microsoft/vscode`
-
+1. **Create a Personal Access Token**:
    - Go to GitHub Settings > Developer settings > Personal access tokens
-
-   - Generate a new token with `repo` permissions### Environment Variables
-
+   - Generate a new token with `repo` permissions
    - Copy the token to your `.env` file
 
+2. **Set Repository**:
+   - Update `GITHUB_REPO` in `.env` with format: `owner/repository-name`
+   - Example: `microsoft/vscode`
+
+### Environment Variables
+
 | Variable | Description | Required |
-
-2. **Set Repository**:|----------|-------------|----------|
-
-   - Update `GITHUB_REPO` in `.env` with format: `owner/repository-name`| `GITHUB_TOKEN` | GitHub Personal Access Token | Yes |
-
-   - Example: `microsoft/vscode`| `GITHUB_REPO` | Repository in format owner/repo | Yes |
-
-
-
-### Environment Variables## Usage
-
-
-
-| Variable | Description | Required |### Dashboard Cards
-
 |----------|-------------|----------|
-
-| `GITHUB_TOKEN` | GitHub Personal Access Token | Yes |- **Available PRs**: Shows count of open pull requests
-
-| `GITHUB_REPO` | Repository in format owner/repo | Yes |- **Labeled PRs**: Shows count of PRs matching selected label criteria
-
-- **Closed PRs**: Shows count of closed pull requests
+| `GITHUB_TOKEN` | GitHub Personal Access Token | Yes |
+| `GITHUB_REPO` | Repository in format owner/repo | Yes |
 
 ## Usage
 
-### Filtering
-
 ### Dashboard Cards
 
-- **Month Filter**: Select a specific month to filter all data
+#### GitHub PR Cards:
+- **Available PRs**: Shows open pull requests with reviewer assignments
+- **Labeled PRs**: Filter PRs by labels (supports "None" for unlabeled)
+- **Closed PRs**: Historical view of closed pull requests  
+- **PR Reviewers**: Team workload distribution with pagination
 
-- **Available PRs**: Shows count of open pull requests- **Label Filter**: Enter comma-separated labels to filter PRs
+#### JIRA Status Cards:
+- **Six Status Cards**: Real-time counts for each JIRA status
+- **Interactive**: Click cards to view filtered ticket lists
+- **Pagination**: Navigate through large ticket datasets
+- **Direct Links**: Jump to JIRA tickets with external links
 
-- **Labeled PRs**: Shows count of PRs matching selected label criteria- **Combined Filtering**: Use both month and label filters together
+### Smart Test Analyzer
 
-- **Closed PRs**: Shows count of closed pull requests
+1. Paste your ticket description in the text area
+2. Select ticket type (Bug Fix, Feature, Security, etc.)
+3. Choose priority level (Low, Medium, High, Critical)
+4. Click "Analyze for Testing" to get intelligent recommendations
 
-- **Smart Test Analyzer**: Analyze ticket descriptions for test recommendations### Viewing Details
+### Advanced Features
 
+- **Month Filtering**: Filter all data by specific months
+- **Multi-Label Filtering**: Complex label combinations with dropdown
+- **Search**: Find specific PRs or tickets quickly
+- **Pagination**: Handle large datasets efficiently
+- **Responsive Design**: Works on desktop, tablet, and mobile
+- **Real-time Refresh**: Update data without page reload
 
+### Viewing Details
 
-### Smart Test Analyzer- Click any dashboard card to open a modal with detailed PR information
-
+- Click any dashboard card to open a modal with detailed PR information
 - Each PR shows:
-
-1. Paste your ticket description in the text area  - Title and number
-
-2. Select ticket type (Bug Fix, Feature, Security, etc.)  - Author and creation date
-
-3. Choose priority level (Low, Medium, High, Critical)  - Current state (open/closed)
-
-4. Click "Analyze for Testing" to get intelligent recommendations  - Associated labels
-
+  - Title and number
+  - Author and creation date
+  - Current state (open/closed)
+  - Associated labels
   - Direct link to GitHub
-
-### Filtering
 
 ## API Endpoints
 
-- **Month Filter**: Select a specific month to filter all data
+### GitHub APIs
+- `GET /` - Main dashboard page
+- `GET /api/pr-stats` - PR statistics with filtering
+- `GET /api/available-months` - Available months for filtering  
+- `GET /api/available-labels` - All PR labels for dropdown
+- `GET /api/reviewer-stats` - Reviewer workload statistics
 
-- **Label Filter**: Enter comma-separated labels to filter PRs- `GET /` - Main dashboard page
+### JIRA APIs
+- `POST /upload/jira` - Upload JIRA export file
+- `GET /api/jira/status` - JIRA status counts
+- `GET /api/jira/tickets` - All JIRA tickets with filtering
 
-- **Combined Filtering**: Use both month and label filters together- `GET /api/pr-stats` - Get PR statistics (supports month and labels params)
+### Smart Test APIs
+- `POST /api/analyze-ticket` - Smart test analysis for ticket descriptions
 
-- `GET /api/prs` - Get detailed PR list (supports type, month, and labels params)
+## Development
 
-### Viewing Details- `GET /api/available-months` - Get list of available months from PRs
-
-
-
-- Click any dashboard card to open a modal with detailed PR information## Development
-
-- Each PR shows:
-
-  - Title and number### Project Structure
-
-  - Author and creation date
-
-  - Current state (open/closed)```
-
-  - Associated labels.
-
-  - Direct link to GitHub├── app.py                 # Main Flask application
-
-├── templates/
-
-## API Endpoints│   └── dashboard.html     # Dashboard UI template
-
-├── static/               # Static files (currently empty)
-
-- `GET /` - Main dashboard page├── requirements.txt      # Python dependencies
-
-- `GET /api/pr-stats` - Get PR statistics (supports month and labels params)├── .env.example         # Environment variables template
-
-- `GET /api/prs` - Get detailed PR list (supports type, month, and labels params)├── .vscode/
-
-- `GET /api/available-months` - Get list of available months from PRs│   ├── launch.json      # VS Code debug configuration
-
-- `POST /api/analyze-ticket` - Smart test analysis for ticket descriptions│   └── tasks.json       # VS Code tasks
-
-└── README.md           # This file
-
-## Development```
-
-
-
-### Project Structure### Technologies Used
-
-
-
-```- **Backend**: Python Flask
-
-.- **Frontend**: HTML5, Bootstrap 5, Vanilla JavaScript
-
-├── app.py                 # Main Flask application- **API**: GitHub REST API v3
-
-├── templates/- **Environment**: Python Virtual Environment
-
-│   └── dashboard.html     # Dashboard UI template
-
-├── static/               # Static files (currently empty)## Troubleshooting
-
-├── requirements.txt      # Python dependencies
-
-├── .env.example         # Environment variables template### Common Issues
-
-├── .vscode/
-
-│   ├── launch.json      # VS Code debug configuration1. **GitHub API Rate Limiting**:
-
-│   └── tasks.json       # VS Code tasks   - Ensure you're using a personal access token
-
-└── README.md           # This file   - Check rate limit status in GitHub API responses
+### Project Structure
 
 ```
+.
+├── app.py                 # Main Flask application with GitHub & JIRA services
+├── templates/
+│   └── dashboard.html     # Comprehensive dashboard UI with all features
+├── static/
+│   └── uploads/          # JIRA file uploads directory
+├── requirements.txt      # Python dependencies
+├── .env                 # Environment configuration
+├── .vscode/
+│   ├── launch.json      # VS Code debug configuration
+│   └── tasks.json       # VS Code build tasks
+├── .github/
+│   └── copilot-instructions.md  # Development guidelines
+└── README.md           # This documentation
+```
 
-2. **Repository Not Found**:
-
-### Technologies Used   - Verify `GITHUB_REPO` format in `.env`
-
-   - Ensure your token has access to the repository
+### Technologies Used
 
 - **Backend**: Python Flask
-
-- **Frontend**: HTML5, Bootstrap 5, Vanilla JavaScript3. **Environment Variables Not Loading**:
-
-- **API**: GitHub REST API v3   - Verify `.env` file exists in project root
-
-- **AI/ML**: Intelligent test analysis with keyword matching   - Check that variables are not quoted unnecessarily
-
+- **Frontend**: HTML5, Bootstrap 5, Vanilla JavaScript
+- **API**: GitHub REST API v3
+- **AI/ML**: Intelligent test analysis with keyword matching
 - **Environment**: Python Virtual Environment
-
-### Error Messages
 
 ## Testing
 
-- If you see "Error loading stats" or "Error loading pull requests", check:
-
-This project includes comprehensive testing features:  - Network connectivity
-
-- **PR Dashboard Testing**: Live GitHub API integration testing  - GitHub token validity
-
-- **Smart Test Analyzer**: Intelligent test recommendation validation  - Repository accessibility
-
-- **UI Component Testing**: Interactive dashboard element testing  - Console for detailed error messages
-
-
-
-## Pull Request for Testing## License
-
-
-
-This branch (`test/pr-dashboard-enhancement`) includes:This project is for demonstration purposes. Please ensure compliance with GitHub's API terms of service.
-
-- Enhanced footer with version information and current date=======
-
-- Updated documentation with recent changes# testing
-
-- Version bump to v2.1.0 for tracking purposes>>>>>>> 2e757797419a55de53922c3967321397240bd3d7
-
+This project includes comprehensive testing features:
+- **PR Dashboard Testing**: Live GitHub API integration testing
+- **Smart Test Analyzer**: Intelligent test recommendation validation
+- **UI Component Testing**: Interactive dashboard element testing
 
 ## Troubleshooting
 
@@ -383,6 +256,22 @@ This branch (`test/pr-dashboard-enhancement`) includes:This project is for demon
   - Repository accessibility
   - Console for detailed error messages
 
+## Performance Optimizations
+
+- **Parallel API Calls**: Fetch PR comments concurrently using ThreadPoolExecutor
+- **Intelligent Caching**: Cache API responses for 15 minutes with smart invalidation
+- **Selective Refresh**: JIRA-only refresh without affecting GitHub data
+- **Pagination**: Limit displayed items (6 reviewers, 10 tickets per page)
+- **Optimized UI**: Compact card designs and efficient event handling
+
+## Current Capabilities
+
+- **GitHub PRs**: Full management of 18+ PRs with filtering and pagination
+- **JIRA Tickets**: Processing and display of 38+ tickets across 6 statuses
+- **Multi-Repository**: Support for switching between repositories
+- **Real-time Data**: Live updates with intelligent caching
+- **Mobile Ready**: Responsive design for all device types
+
 ## License
 
-This project is for demonstration and testing purposes. Please ensure compliance with GitHub's API terms of service.
+This project is for demonstration purposes. Please ensure compliance with GitHub's API terms of service and JIRA data usage policies.
