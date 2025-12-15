@@ -33,6 +33,19 @@ A comprehensive Python Flask web application for monitoring GitHub Pull Requests
 - **Compact UI**: Space-efficient card designs for better visibility
 - **Search Functionality**: Quick search within PR and ticket lists
 
+### Smart Test Analyzer
+- **Intelligent Test Recommendations**: AI-powered analysis of ticket descriptions
+- **Multi-type Support**: Bug fixes, features, security updates, and more
+- **Priority-based Analysis**: Different recommendations based on ticket priority
+- **Comprehensive Coverage**: Automated, manual, and specialized testing suggestions
+
+## Recent Updates (v2.1.0)
+
+- ✨ Added Smart Test Analyzer for intelligent test recommendations
+- 📊 Enhanced dashboard footer with version information
+- 🧹 Cleaned up legacy Jira integration files
+- 🎨 Improved UI styling and visual enhancements
+
 ## Setup Instructions
 
 ### Prerequisites
@@ -44,16 +57,19 @@ A comprehensive Python Flask web application for monitoring GitHub Pull Requests
 ### Installation
 
 1. **Clone or navigate to the project directory**
+
    ```bash
    cd "C:\Users\RP017421\OneDrive - Zelis Healthcare\Testing_Projects\testing github"
    ```
 
 2. **Set up Python virtual environment** (already configured)
+
    ```bash
    # Virtual environment is already created at .venv
    ```
 
 3. **Install dependencies** (already installed)
+
    ```bash
    # Dependencies are already installed in the virtual environment
    ```
@@ -137,6 +153,13 @@ http://localhost:5000
 - **Pagination**: Navigate through large ticket datasets
 - **Direct Links**: Jump to JIRA tickets with external links
 
+### Smart Test Analyzer
+
+1. Paste your ticket description in the text area
+2. Select ticket type (Bug Fix, Feature, Security, etc.)
+3. Choose priority level (Low, Medium, High, Critical)
+4. Click "Analyze for Testing" to get intelligent recommendations
+
 ### Advanced Features
 
 - **Month Filtering**: Filter all data by specific months
@@ -170,6 +193,9 @@ http://localhost:5000
 - `GET /api/jira/status` - JIRA status counts
 - `GET /api/jira/tickets` - All JIRA tickets with filtering
 
+### Smart Test APIs
+- `POST /api/analyze-ticket` - Smart test analysis for ticket descriptions
+
 ## Development
 
 ### Project Structure
@@ -196,7 +222,15 @@ http://localhost:5000
 - **Backend**: Python Flask
 - **Frontend**: HTML5, Bootstrap 5, Vanilla JavaScript
 - **API**: GitHub REST API v3
+- **AI/ML**: Intelligent test analysis with keyword matching
 - **Environment**: Python Virtual Environment
+
+## Testing
+
+This project includes comprehensive testing features:
+- **PR Dashboard Testing**: Live GitHub API integration testing
+- **Smart Test Analyzer**: Intelligent test recommendation validation
+- **UI Component Testing**: Interactive dashboard element testing
 
 ## Troubleshooting
 
