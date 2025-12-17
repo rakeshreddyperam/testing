@@ -234,7 +234,16 @@
         
         <!-- Filters -->
         <div class="row mb-4">
-            <div class="col-md-4">
+            <div class="col-md-3">
+                <label for="enterpriseFilter" class="form-label">
+                    <i class="fas fa-building me-1"></i>Enterprise:
+                </label>
+                <select id="enterpriseFilter" class="form-select">
+                    <option value="zdi" selected>ZDI Enterprise</option>
+                    <option value="ie">I&E Enterprise</option>
+                </select>
+            </div>
+            <div class="col-md-3">
                 <label for="repoFilter" class="form-label">
                     <i class="fab fa-github me-1"></i>Repository:
                 </label>
@@ -251,7 +260,7 @@
                     <option value="kubernetes/kubernetes">kubernetes/kubernetes</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="monthFilter" class="form-label">
                     <i class="fas fa-calendar me-1"></i>Filter by Month:
                 </label>
@@ -259,7 +268,7 @@
                     <option value="">All Months</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="labelFilter" class="form-label">
                     <i class="fas fa-tags me-1"></i>Filter by Labels:
                 </label>
@@ -626,9 +635,23 @@
     <script>
         let currentMonth = '';
         let currentLabels = [];
+        let currentEnterprise = 'zdi';
         let currentRepo = 'Zelis-Data-Intelligence-ZDI/zdi-data-admin';
         let requestQueue = new Map(); // Prevent duplicate requests
         let prModalInstance = null; // Store modal instance
+        
+        // Enterprise repository configurations
+        const enterpriseRepos = {
+            'zdi': [
+                { value: 'Zelis-Data-Intelligence-ZDI/zdi-data-admin', text: 'ZDI Data Admin' },
+                { value: 'Zelis-Data-Intelligence-ZDI/Address-Service', text: 'Address Service' },
+                { value: 'Zelis-Data-Intelligence-ZDI/astro-zse', text: 'Astro ZSE' },
+                { value: 'Zelis-Data-Intelligence-ZDI/smrf-hub', text: 'SMRF Hub' }
+            ],
+            'ie': [
+                { value: 'Insights-Empowerment/smrf-hub', text: 'SMRF Hub' }
+            ]
+        };
         
         // Pagination variables for reviewers
         let allReviewers = []; // Store all reviewers data
@@ -670,8 +693,32 @@
             document.body.style.paddingRight = '';
         }
         
+        // Populate repository dropdown based on selected enterprise
+        function populateRepositories() {
+            const repoFilter = document.getElementById('repoFilter');
+            const enterprise = document.getElementById('enterpriseFilter').value;
+            
+            repoFilter.innerHTML = '';
+            
+            if (enterpriseRepos[enterprise]) {
+                enterpriseRepos[enterprise].forEach(repo => {
+                    const option = document.createElement('option');
+                    option.value = repo.value;
+                    option.textContent = repo.text;
+                    repoFilter.appendChild(option);
+                });
+                
+                // Set the first repository as selected and update currentRepo
+                if (enterpriseRepos[enterprise].length > 0) {
+                    currentRepo = enterpriseRepos[enterprise][0].value;
+                    repoFilter.value = currentRepo;
+                }
+            }
+        }
+
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
+            populateRepositories();
             loadAvailableMonths();
             loadAvailableLabels();
             loadStats();
@@ -679,6 +726,16 @@
             initializeLabelDropdown();
             
             // Event listeners
+            document.getElementById('enterpriseFilter').addEventListener('change', function() {
+                currentEnterprise = this.value;
+                populateRepositories();
+                loadAvailableMonths();
+                loadAvailableLabels();
+                loadStats();
+                loadReviewerStats();
+                refreshOpenModalIfVisible();
+            });
+            
             document.getElementById('repoFilter').addEventListener('change', function() {
                 currentRepo = this.value;
                 loadAvailableMonths();
@@ -765,6 +822,7 @@
         
         function loadAvailableMonths() {
             const params = new URLSearchParams();
+            if (currentEnterprise) params.append('enterprise', currentEnterprise);
             if (currentRepo) params.append('repo', currentRepo);
             
             fetch(`/api/available-months?${params}`)
@@ -787,6 +845,7 @@
         
         function loadAvailableLabels() {
             const params = new URLSearchParams();
+            if (currentEnterprise) params.append('enterprise', currentEnterprise);
             if (currentRepo) params.append('repo', currentRepo);
             
             const menu = document.getElementById('labelDropdownMenu');
@@ -1007,8 +1066,11 @@
             
             const params = new URLSearchParams();
             if (currentMonth) params.append('month', currentMonth);
+            if (currentEnterprise) params.append('enterprise', currentEnterprise);
             if (currentRepo) params.append('repo', currentRepo);
             currentLabels.forEach(label => params.append('labels', label));
+            // Add refresh parameter to bypass cache for accurate counts
+            params.append('refresh', 'true');
             
             console.log('Loading stats with currentLabels:', currentLabels);
             console.log('Stats URL:', `/api/pr-stats?${params}`);
@@ -1089,6 +1151,7 @@
             const includeDetails = !document.getElementById('fastModeToggle').checked ? 'true' : 'false';
             const params = new URLSearchParams({ type, sort: sortBy, include_comments: includeDetails, page: String(currentPRPage), per_page: String(prsPerPage) });
             if (currentMonth) params.append('month', currentMonth);
+            if (currentEnterprise) params.append('enterprise', currentEnterprise);
             if (currentRepo) params.append('repo', currentRepo);
             if (type === 'labeled') {
                 currentLabels.forEach(label => params.append('labels', label));
@@ -1306,6 +1369,7 @@
             const currentType = modalEl ? (modalEl.getAttribute('data-current-type') || 'open') : 'open';
             const params = new URLSearchParams({ type: currentType, sort: sortBy, include_comments: includeDetails, page: String(page), per_page: String(prsPerPage) });
             if (currentMonth) params.append('month', currentMonth);
+            if (currentEnterprise) params.append('enterprise', currentEnterprise);
             if (currentRepo) params.append('repo', currentRepo);
             if (currentType === 'labeled') {
                 currentLabels.forEach(label => params.append('labels', label));
@@ -1382,7 +1446,7 @@
             `;
             
             // Build URL with current filters
-            let url = `/api/reviewer-stats?repo=${encodeURIComponent(currentRepo)}`;
+            let url = `/api/reviewer-stats?enterprise=${encodeURIComponent(currentEnterprise)}&repo=${encodeURIComponent(currentRepo)}`;
             if (currentMonth) {
                 url += `&month=${encodeURIComponent(currentMonth)}`;
             }
@@ -1687,7 +1751,7 @@
             modal.show();
             
             // Build URL with current filters
-            let url = `/api/reviewer-prs?reviewer=${encodeURIComponent(reviewerName)}&repo=${encodeURIComponent(currentRepo)}`;
+            let url = `/api/reviewer-prs?reviewer=${encodeURIComponent(reviewerName)}&enterprise=${encodeURIComponent(currentEnterprise)}&repo=${encodeURIComponent(currentRepo)}`;
             if (currentMonth) {
                 url += `&month=${encodeURIComponent(currentMonth)}`;
             }
