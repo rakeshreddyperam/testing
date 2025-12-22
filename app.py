@@ -80,8 +80,19 @@ def rate_limit(max_requests=60, window=60):
 
 # GitHub API configuration
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+GITHUB_TOKEN_ZDI = os.getenv('GITHUB_TOKEN_ZDI')
+GITHUB_TOKEN_IE = os.getenv('GITHUB_TOKEN_IE')
 GITHUB_REPO = os.getenv('GITHUB_REPO', 'microsoft/vscode')  # Default to a public repo
 BASE_URL = 'https://api.github.com'
+
+# Helper function to get enterprise token
+def get_enterprise_token(enterprise):
+    if enterprise == 'zdi':
+        return GITHUB_TOKEN_ZDI
+    elif enterprise == 'ie':
+        return GITHUB_TOKEN_IE
+    else:
+        return GITHUB_TOKEN
 
 # JIRA API configuration
 JIRA_URL = os.getenv('JIRA_URL')  # e.g., 'https://yourcompany.atlassian.net'
@@ -121,7 +132,8 @@ class GitHubService:
         
         all_prs = []
         page = 1
-        max_pages = 5  # Limit to prevent infinite loops
+        # Higher limit for open PRs to get all reviewers, lower for closed to avoid performance issues
+        max_pages = 10 if state == 'open' else 5
         
         try:
             while page <= max_pages:
@@ -644,21 +656,27 @@ def pr_stats():
         month = request.args.get('month')
         labels = request.args.getlist('labels')
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        enterprise = request.args.get('enterprise', 'zdi')  # Default to zdi
         
-        logger.info(f"DEBUG - PR STATS REQUEST - repo={repo}, month={month}, labels={labels}")
-        logger.debug(f"Getting PR stats for repo={repo}, month={month}, labels={labels}")
+        logger.info(f"DEBUG - PR STATS REQUEST - enterprise={enterprise}, repo={repo}, month={month}, labels={labels}")
+        logger.debug(f"Getting PR stats for enterprise={enterprise}, repo={repo}, month={month}, labels={labels}")
+        
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
         
         # Create cache key for stats
-        stats_cache_key = f"pr_stats_{repo}_{month or 'all'}_{','.join(sorted(labels))}"
+        stats_cache_key = f"pr_stats_{enterprise}_{repo}_{month or 'all'}_{','.join(sorted(labels))}"
         
         # Check database cache first (5 minute TTL for fast responses)
-        cached_stats = cache_db.get_cache(stats_cache_key)
+        # Skip cache if refresh is requested
+        skip_cache = request.args.get('refresh', '').lower() == 'true'
+        cached_stats = None if skip_cache else cache_db.get_cache(stats_cache_key)
         if cached_stats:
             logger.info(f"Returning CACHED stats from DB (saved {time.time() - start_time:.2f}s)")
             return jsonify(cached_stats)
         
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         # Use same logic as PR details endpoint - force fresh API call
         logger.info(f"PR STATS DEBUG - Making DIRECT GitHub API call for open PRs")
@@ -668,7 +686,7 @@ def pr_stats():
         api_url = f'https://api.github.com/repos/{repo}/pulls'
         headers = {
             'Accept': 'application/vnd.github.v3+json',
-            'Authorization': f'token {GITHUB_TOKEN}',
+            'Authorization': f'token {token}',
             'User-Agent': 'GitHub-PR-Dashboard'
         }
         
@@ -716,7 +734,7 @@ def pr_stats():
         all_closed_prs = []
         page = 1
         
-        while page <= 3:  # Max 3 pages for closed PRs (300 closed PRs max)
+        while page <= 20:  # Max 20 pages for closed PRs (2000 closed PRs max)
             params = {
                 'state': 'closed',
                 'per_page': 100,
@@ -850,6 +868,7 @@ def get_prs():
         month = request.args.get('month')
         labels = request.args.getlist('labels')
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        enterprise = request.args.get('enterprise', 'zdi')  # Default to zdi
         sort_by = request.args.get('sort', 'newest')  # newest, oldest, most_recent, updated
         include_comments = request.args.get('include_comments', 'false').lower() == 'true'
         # Server-side pagination params
@@ -866,9 +885,13 @@ def get_prs():
         
         logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}, sort={sort_by}, include_comments={include_comments}")
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create cache key based on request parameters
-        cache_key_base = f"{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}_p{page}_pp{per_page}"
-        cache_key = f"prs_{cache_key_base}_comments_{include_comments}"
+        cache_key_base = f"{enterprise}_{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}_p{page}_pp{per_page}"
+        # Versioned cache key to ensure new fields (display_state/is_draft) propagate
+        cache_key = f"prs_{cache_key_base}_v2_comments_{include_comments}"
         logger.debug(f"Cache key: {cache_key}")
         
         # Check database cache first (3 minute TTL for PR details)
@@ -877,8 +900,8 @@ def get_prs():
             logger.info(f"Returning cached PR data from DB (saved {time.time() - start_time:.2f}s)")
             return jsonify(cached_prs)
         
-        # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        # Create GitHub service for the requested repository with enterprise token
+        current_service = GitHubService(token, repo)
         
         if pr_type == 'labeled':
             # Get only open PRs and filter by labels
@@ -986,11 +1009,18 @@ def get_prs():
             pr_body = pr.get('body') or ''
             jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
             jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
+
+            # Preserve GitHub state but surface draft explicitly for UI consumers
+            is_draft = pr.get('draft', False)
+            display_state = 'draft' if is_draft else pr['state']
             
             formatted_prs.append({
                 'title': pr_title,
                 'number': pr['number'],
                 'state': pr['state'],
+                'display_state': display_state,
+                'is_draft': is_draft,
+                'draft': is_draft,
                 'created_at': pr['created_at'],
                 'updated_at': pr['updated_at'],
                 'last_comment_at': last_comment_date,
@@ -1050,15 +1080,19 @@ def available_months():
     """Get available months from PRs"""
     try:
         repo = request.args.get('repo', GITHUB_REPO)
-        cache_key = f"months_{repo}"
+        enterprise = request.args.get('enterprise', 'zdi')
+        cache_key = f"months_{enterprise}_{repo}"
         
         # Check cache first (10 minute TTL)
         cached_months = cache_db.get_cache(cache_key)
         if cached_months:
             return jsonify(cached_months)
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         prs = current_service.get_pull_requests()
         months = set()
@@ -1083,15 +1117,19 @@ def available_labels():
     """Get available labels from PRs"""
     try:
         repo = request.args.get('repo', GITHUB_REPO)
-        cache_key = f"labels_{repo}"
+        enterprise = request.args.get('enterprise', 'zdi')
+        cache_key = f"labels_{enterprise}_{repo}"
         
         # Check cache first (10 minute TTL)
         cached_labels = cache_db.get_cache(cache_key)
         if cached_labels:
             return jsonify(cached_labels)
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         prs = current_service.get_pull_requests()
         labels = set()
@@ -1126,12 +1164,55 @@ def get_reviewer_stats():
     try:
         repo = request.args.get('repo', GITHUB_REPO)
         month = request.args.get('month')
+        enterprise = request.args.get('enterprise', 'zdi')
         
-        # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
         
-        # Get open PRs
-        prs = current_service.get_pull_requests(state='open', month=month)
+        # Make direct API calls to get ALL open PRs for accurate reviewer stats
+        import requests
+        api_url = f'https://api.github.com/repos/{repo}/pulls'
+        headers = {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': f'token {token}',
+            'User-Agent': 'GitHub-PR-Dashboard'
+        }
+        
+        all_open_prs = []
+        page = 1
+        
+        while page <= 10:  # Max 10 pages for open PRs (1000 open PRs)
+            params = {
+                'state': 'open',
+                'per_page': 100,
+                'page': page,
+                'sort': 'created',
+                'direction': 'desc'
+            }
+            
+            response = requests.get(api_url, headers=headers, params=params, timeout=30)
+            if response.status_code == 200:
+                prs_page = response.json()
+                if not prs_page:
+                    break
+                all_open_prs.extend(prs_page)
+                if len(prs_page) < 100:
+                    break
+                page += 1
+            else:
+                logger.error(f"GitHub API error for reviewer stats: {response.status_code}")
+                break
+        
+        # Apply month filtering if specified
+        if month:
+            filtered_prs = []
+            for pr in all_open_prs:
+                created_date = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+                if created_date.strftime('%Y-%m') == month:
+                    filtered_prs.append(pr)
+            prs = filtered_prs
+        else:
+            prs = all_open_prs
         
         # Count PRs per reviewer
         reviewer_stats = {}
@@ -1200,12 +1281,16 @@ def get_reviewer_prs():
         reviewer = request.args.get('reviewer')
         repo = request.args.get('repo', GITHUB_REPO)
         month = request.args.get('month')
+        enterprise = request.args.get('enterprise', 'zdi')
         
         if not reviewer:
             return jsonify({'error': 'Reviewer parameter required'}), 400
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         # Get open PRs
         prs = current_service.get_pull_requests(state='open', month=month)
