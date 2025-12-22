@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Export PR Metrics Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Space Grotesk', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f7f9fb;
+            color: #1f2937;
+        }
+        .page-shell {
+            max-width: 1400px;
+        }
+        .card-soft {
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+            background: #ffffff;
+        }
+            .loading-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(255, 255, 255, 0.7);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                z-index: 1050;
+                backdrop-filter: blur(2px);
+            }
+        .chip-label {
+            border: 1px solid #d1d5db;
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            background: #f9fafb;
+        }
+        .kpi-card {
+            border-radius: 12px;
+            padding: 18px;
+            color: #0f172a;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+            cursor: default;
+        }
+        .kpi-card.clickable {
+            cursor: pointer;
+            transition: transform 0.08s ease, box-shadow 0.08s ease;
+        }
+        .kpi-card.clickable:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+        }
+        .kpi-accent {
+            width: 10px;
+            border-radius: 10px;
+            margin-right: 10px;
+        }
+        .kpi-title {
+            font-size: 0.95rem;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+        .toolbar-btn {
+            min-width: 140px;
+        }
+        .chart-card {
+            border-radius: 14px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+        }
+        .section-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .insight-bullet {
+            margin-bottom: 8px;
+            color: #374151;
+        }
+        @media (max-width: 768px) {
+            .toolbar-btn { width: 100%; margin-top: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4 page-shell">
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="d-flex align-items-center gap-3 bg-white px-4 py-3 rounded-3 shadow-sm border">
+                <div class="spinner-border text-primary" role="status" aria-label="Loading"></div>
+                <div class="fw-semibold text-primary">Loading data…</div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-3">
+            <div>
+                <h2 class="fw-bold mb-1"><i class="fas fa-chart-line me-2 text-primary"></i>Github PR Metrics and Analytics</h2>
+                <p class="text-muted mb-0">Executive-ready analytics for GitHub pull requests</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary toolbar-btn" href="/">
+                    <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+                </a>
+                <button class="btn btn-primary toolbar-btn" id="exportPdfBtn"><i class="fas fa-file-pdf me-1"></i>Export as PDF</button>
+            </div>
+        </div>
+
+        <div class="card-soft p-3 mb-4">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">Enterprise</label>
+                    <select class="form-select" id="enterpriseFilter">
+                        <option value="zdi" selected>ZDI Enterprise</option>
+                        <option value="ie">I&E Enterprise</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">Repository</label>
+                    <select class="form-select" id="repoFilter"></select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">Date range</label>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <input type="date" class="form-control" id="dateStart">
+                        <input type="date" class="form-control" id="dateEnd">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">Label filter</label>
+                    <select class="form-select" id="labelFilter">
+                        <option value="all" selected>All Labels</option>
+                        <option value="backend">backend</option>
+                        <option value="frontend">frontend</option>
+                        <option value="infra">infra</option>
+                        <option value="data">data</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end justify-content-end">
+                    <button class="btn btn-primary w-100" id="applyFiltersBtn">
+                        <i class="fas fa-filter me-1"></i>Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="kpi-card d-flex align-items-center clickable" id="cardCreated" title="View created PRs">
+                    <div class="kpi-accent bg-success"></div>
+                    <div>
+                        <div class="kpi-title">PRs Created</div>
+                        <div class="kpi-value" id="kpiCreated">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card d-flex align-items-center clickable" id="cardMerged" title="View merged PRs">
+                    <div class="kpi-accent bg-primary"></div>
+                    <div>
+                        <div class="kpi-title">PRs Merged</div>
+                        <div class="kpi-value" id="kpiMerged">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card d-flex align-items-center">
+                    <div class="kpi-accent" style="background:#f59e0b"></div>
+                    <div>
+                        <div class="kpi-title">Avg Cycle Time (days)</div>
+                        <div class="kpi-value" id="kpiCycle">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card d-flex align-items-center">
+                    <div class="kpi-accent" style="background:#ef4444"></div>
+                    <div class="clickable" id="cardClosed" title="View closed (not merged) PRs">
+                        <div class="kpi-title">PRs Closed Without Merge</div>
+                        <div class="kpi-value" id="kpiClosed">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="reportContent">
+        <div class="row g-3" id="metricsContent">
+            <div class="col-lg-6">
+                <div class="card chart-card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="section-title">PR Volume Over Time</span>
+                        <span class="chip-label">Created vs Merged</span>
+                    </div>
+                    <canvas id="lineVolume"></canvas>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card chart-card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="section-title">Average PR Cycle Time</span>
+                        <span class="chip-label">Weekly buckets</span>
+                    </div>
+                    <canvas id="barCycle"></canvas>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card chart-card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="section-title">Open vs Merged Mix</span>
+                        <span class="chip-label">Stacked percentage</span>
+                    </div>
+                    <canvas id="stackedStatus"></canvas>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card chart-card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="section-title">Average Review Time</span>
+                        <span class="chip-label">Hours, weekly</span>
+                    </div>
+                    <canvas id="barReview"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-soft p-3 mt-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="section-title mb-0">Insights (auto-generated)</span>
+                <span class="chip-label" id="insightRange">—</span>
+            </div>
+            <ul class="mb-0" id="insightsList"></ul>
+        </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="prListModal" tabindex="-1" aria-labelledby="prListLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="prListLabel">Pull Requests</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="prListLoading" class="d-flex align-items-center mb-2" style="display:none;">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        <span>Loading PRs...</span>
+                    </div>
+                    <div id="prListEmpty" class="text-muted" style="display:none;">No pull requests found for this range.</div>
+                    <ul class="list-group" id="prList"></ul>
+                </div>
+                <div class="modal-footer">
+                    <span class="text-muted" id="prListCount">0 PRs</span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const enterpriseRepos = {
+            'zdi': [
+                { value: 'Zelis-Data-Intelligence-ZDI/zdi-data-admin', text: 'ZDI Data Admin' },
+                { value: 'Zelis-Data-Intelligence-ZDI/Address-Service', text: 'Address Service' },
+                { value: 'Zelis-Data-Intelligence-ZDI/astro-zse', text: 'Astro ZSE' },
+                { value: 'Zelis-Data-Intelligence-ZDI/smrf-hub', text: 'SMRF Hub' }
+            ],
+            'ie': [
+                { value: 'Insights-Empowerment/smrf-hub', text: 'SMRF Hub' }
+            ]
+        };
+
+        // Metrics data is loaded from the backend; no static sample data
+        let metricsData = [];
+
+        const charts = {};
+        const lineCtx = () => document.getElementById('lineVolume');
+        const barCycleCtx = () => document.getElementById('barCycle');
+        const stackedCtx = () => document.getElementById('stackedStatus');
+        const barReviewCtx = () => document.getElementById('barReview');
+        let prListModal;
+
+        function populateRepositories() {
+            const enterprise = document.getElementById('enterpriseFilter').value;
+            const repoSelect = document.getElementById('repoFilter');
+            repoSelect.innerHTML = '';
+            const repos = enterpriseRepos[enterprise] || [];
+            repos.forEach(repo => {
+                const opt = document.createElement('option');
+                opt.value = repo.value;
+                opt.textContent = repo.text;
+                repoSelect.appendChild(opt);
+            });
+        }
+
+        async function populateLabels() {
+            const repo = document.getElementById('repoFilter').value;
+            const enterprise = document.getElementById('enterpriseFilter').value;
+            const labelSelect = document.getElementById('labelFilter');
+            const current = labelSelect.value;
+            labelSelect.innerHTML = '<option>Loading...</option>';
+
+            const params = new URLSearchParams();
+            if (enterprise) params.append('enterprise', enterprise);
+            if (repo) params.append('repo', repo);
+
+            let labels = [];
+            try {
+                const res = await fetch(`/api/available-labels?${params.toString()}`);
+                if (res.ok) {
+                    labels = await res.json();
+                }
+            } catch (err) {
+                console.error('Error fetching labels for metrics:', err);
+            }
+
+            if (!labels || labels.length === 0) {
+                labels = [];
+            }
+
+            labelSelect.innerHTML = '';
+            const options = ['all', ...labels];
+            options.forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val === 'all' ? 'All Labels' : val;
+                labelSelect.appendChild(opt);
+            });
+            if (options.includes(current)) {
+                labelSelect.value = current;
+            }
+        }
+
+        function initDates() {
+            const startInput = document.getElementById('dateStart');
+            const endInput = document.getElementById('dateEnd');
+            startInput.value = '';
+            endInput.value = '';
+        }
+
+        function filterData() {
+            return metricsData || [];
+        }
+
+        function groupByDate(data) {
+            const map = new Map();
+            data.forEach(d => {
+                map.set(d.date, { created: d.created, merged: d.merged });
+            });
+            return Array.from(map.entries())
+                .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+                .map(([date, v]) => ({ date, ...v }));
+        }
+
+        function toUtcTimestamp(dateStr) {
+            return dateStr ? Date.parse(`${dateStr}T00:00:00Z`) : null;
+        }
+
+        async function fetchMetricsData() {
+            const repo = document.getElementById('repoFilter').value;
+            const enterprise = document.getElementById('enterpriseFilter').value;
+            const label = document.getElementById('labelFilter').value;
+            const start = document.getElementById('dateStart').value;
+            const end = document.getElementById('dateEnd').value;
+
+            const params = new URLSearchParams();
+            if (enterprise) params.append('enterprise', enterprise);
+            if (repo) params.append('repo', repo);
+            if (label) params.append('label', label);
+            if (start) params.append('start', start);
+            if (end) params.append('end', end);
+
+            try {
+                const res = await fetch(`/api/metrics?${params.toString()}`);
+                if (!res.ok) {
+                    console.error('Metrics fetch failed', res.status, res.statusText);
+                    return { items: [], kpis: { created: 0, merged: 0, closed_without_merge: 0, cycle_avg: 0 }, insights: {}, range: { start, end } };
+                }
+                const data = await res.json();
+                return data;
+            } catch (err) {
+                console.error('Metrics fetch error', err);
+                return { items: [], kpis: { created: 0, merged: 0, closed_without_merge: 0, cycle_avg: 0 }, insights: {}, range: { start, end } };
+            }
+        }
+
+        async function fetchPrList(listType) {
+            const repo = document.getElementById('repoFilter').value;
+            const enterprise = document.getElementById('enterpriseFilter').value;
+            const label = document.getElementById('labelFilter').value;
+            const start = document.getElementById('dateStart').value;
+            const end = document.getElementById('dateEnd').value;
+            const params = new URLSearchParams();
+            params.append('type', listType);
+            if (enterprise) params.append('enterprise', enterprise);
+            if (repo) params.append('repo', repo);
+            if (label) params.append('label', label);
+            if (start) params.append('start', start);
+            if (end) params.append('end', end);
+            const res = await fetch(`/api/metrics/pr-list?${params.toString()}`);
+            if (!res.ok) return { items: [], count: 0 };
+            return res.json();
+        }
+
+        function groupByWeek(data) {
+            const weekMap = new Map();
+            data.forEach(d => {
+                const { key, label } = getWeekKeyAndLabel(d.date);
+                if (!weekMap.has(key)) {
+                    weekMap.set(key, { label, cycleSum: 0, reviewSum: 0, count: 0, open: 0, merged: 0 });
+                }
+                const agg = weekMap.get(key);
+                agg.cycleSum += d.cycle;
+                agg.reviewSum += d.reviewHrs;
+                agg.count += 1;
+                agg.open += d.openCount;
+                agg.merged += d.mergedCount;
+            });
+            return Array.from(weekMap.entries()).map(([weekKey, v]) => ({
+                weekKey,
+                weekLabel: v.label,
+                avgCycle: v.count ? +(v.cycleSum / v.count).toFixed(1) : 0,
+                avgReview: v.count ? +(v.reviewSum / v.count).toFixed(1) : 0,
+                open: v.open,
+                merged: v.merged
+            })).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
+        }
+
+        function getWeekKeyAndLabel(dateStr) {
+            const d = new Date(dateStr);
+            const day = d.getDay();
+            const mondayOffset = (day + 6) % 7; // 0 for Monday, 6 for Sunday
+            const start = new Date(d);
+            start.setDate(d.getDate() - mondayOffset);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            const pad = n => String(n).padStart(2, '0');
+            const fmt = (dt) => `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`;
+            return {
+                key: start.toISOString().slice(0, 10),
+                label: `${fmt(start)}–${fmt(end)}`
+            };
+        }
+
+        function calcKPIs(data) {
+            const created = data.reduce((sum, d) => sum + d.created, 0);
+            const merged = data.reduce((sum, d) => sum + d.merged, 0);
+            const closed = data.reduce((sum, d) => sum + d.closed, 0);
+            const cycleAvg = data.length ? (data.reduce((sum, d) => sum + d.cycle, 0) / data.length) : 0;
+            return {
+                created,
+                merged,
+                closed,
+                cycleAvg: cycleAvg ? cycleAvg.toFixed(1) : '0.0'
+            };
+        }
+
+        function renderKPIs(kpis) {
+            document.getElementById('kpiCreated').textContent = kpis.created;
+            document.getElementById('kpiMerged').textContent = kpis.merged;
+            document.getElementById('kpiClosed').textContent = kpis.closed;
+            document.getElementById('kpiCycle').textContent = kpis.cycleAvg;
+        }
+
+        function formatDate(dtStr) {
+            if (!dtStr) return '';
+            const d = new Date(dtStr);
+            return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        function renderPrListModal(list, listType) {
+            const title = listType === 'merged' ? 'PRs Merged' : (listType === 'closed' ? 'PRs Closed Without Merge' : 'PRs Created');
+            document.getElementById('prListLabel').textContent = title;
+            const listEl = document.getElementById('prList');
+            const emptyEl = document.getElementById('prListEmpty');
+            const countEl = document.getElementById('prListCount');
+            listEl.innerHTML = '';
+            if (!list || list.length === 0) {
+                emptyEl.style.display = 'block';
+                countEl.textContent = '0 PRs';
+            } else {
+                emptyEl.style.display = 'none';
+                list.forEach(pr => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item';
+
+                    const header = document.createElement('div');
+                    header.className = 'd-flex justify-content-between align-items-start';
+                    const titleWrap = document.createElement('div');
+                    titleWrap.innerHTML = `<div class="fw-semibold">#${pr.number} — ${pr.title}</div>`;
+                    const link = document.createElement('a');
+                    link.href = pr.html_url || '#';
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.className = 'btn btn-sm btn-outline-primary';
+                    link.textContent = 'Open';
+                    header.appendChild(titleWrap);
+                    header.appendChild(link);
+
+                    const meta = document.createElement('div');
+                    meta.className = 'text-muted small mb-1';
+                    const createdTxt = formatDate(pr.created_at);
+                    const mergedTxt = pr.merged_at ? formatDate(pr.merged_at) : '';
+                    const closedTxt = pr.closed_at ? formatDate(pr.closed_at) : '';
+                    const mergedPart = listType === 'merged' && mergedTxt ? ` · merged ${mergedTxt}` : '';
+                    const closedPart = listType === 'closed' && closedTxt ? ` · closed ${closedTxt}` : '';
+                    meta.textContent = `${pr.state || 'state?'} · ${pr.user || 'unknown'} · created ${createdTxt}${mergedPart}${closedPart}`;
+
+                    const labelsRow = document.createElement('div');
+                    if (pr.labels && pr.labels.length) {
+                        pr.labels.forEach(l => {
+                            const span = document.createElement('span');
+                            span.className = 'badge bg-secondary me-1 label-badge';
+                            span.textContent = l;
+                            labelsRow.appendChild(span);
+                        });
+                    }
+
+                    li.appendChild(header);
+                    li.appendChild(meta);
+                    if (labelsRow.childNodes.length) {
+                        li.appendChild(labelsRow);
+                    }
+                    listEl.appendChild(li);
+                });
+                countEl.textContent = `${list.length} PR${list.length === 1 ? '' : 's'}`;
+            }
+            document.getElementById('prListLoading').style.display = 'none';
+            if (!prListModal) {
+                prListModal = new bootstrap.Modal(document.getElementById('prListModal'));
+            }
+            prListModal.show();
+        }
+
+        function renderLineChart(data) {
+            const series = groupByDate(data);
+            const labels = series.map(s => s.date);
+            const created = series.map(s => s.created);
+            const merged = series.map(s => s.merged);
+            const ctx = lineCtx();
+            if (charts.line) charts.line.destroy();
+            charts.line = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'PRs Created', data: created, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', tension: 0.3, fill: true },
+                        { label: 'PRs Merged', data: merged, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.3, fill: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom' }, tooltip: { enabled: true } },
+                    scales: {
+                        x: { title: { display: true, text: 'Date' } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'PR count' } }
+                    }
+                }
+            });
+        }
+
+        function renderCycleBar(data) {
+            const weeks = groupByWeek(data);
+            const labels = weeks.map(w => w.weekLabel);
+            const values = weeks.map(w => w.avgCycle);
+            const ctx = barCycleCtx();
+            if (charts.cycle) charts.cycle.destroy();
+            charts.cycle = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Avg Cycle Time (days)', data: values, backgroundColor: '#f59e0b' }] },
+                options: {
+                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                    scales: {
+                        x: { title: { display: true, text: 'Week' } },
+                        y: { beginAtZero: true, title: { display: true, text: 'Cycle time (days)' } }
+                    }
+                }
+            });
+        }
+
+        function renderStackedStatus(data) {
+            const weeks = groupByWeek(data);
+            const labels = weeks.map(w => w.weekLabel);
+            const open = weeks.map(w => w.open);
+            const merged = weeks.map(w => w.merged);
+            const totals = weeks.map((_, i) => open[i] + merged[i] || 1);
+            const openPct = open.map((v, i) => +((v / totals[i]) * 100).toFixed(1));
+            const mergedPct = merged.map((v, i) => +((v / totals[i]) * 100).toFixed(1));
+            const ctx = stackedCtx();
+            if (charts.stacked) charts.stacked.destroy();
+            charts.stacked = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Open', data: openPct, backgroundColor: '#94a3b8', stack: 'status' },
+                        { label: 'Merged', data: mergedPct, backgroundColor: '#3b82f6', stack: 'status' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Week' } },
+                        y: { beginAtZero: true, max: 100, ticks: { callback: v => `${v}%` }, title: { display: true, text: 'Share of PRs (%)' } }
+                    }
+                }
+            });
+        }
+
+        function renderReviewBar(data) {
+            const weeks = groupByWeek(data);
+            const labels = weeks.map(w => w.weekLabel);
+            const values = weeks.map(w => w.avgReview);
+            const ctx = barReviewCtx();
+            if (charts.review) charts.review.destroy();
+            charts.review = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Avg Review Time (hrs)', data: values, backgroundColor: '#6366f1' }] },
+                options: {
+                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                    scales: {
+                        x: { title: { display: true, text: 'Week' } },
+                        y: { beginAtZero: true, title: { display: true, text: 'Review time (hours)' } }
+                    }
+                }
+            });
+        }
+
+        function renderInsights(data) {
+            const insightsEl = document.getElementById('insightsList');
+            const rangeLabel = document.getElementById('insightRange');
+            const start = document.getElementById('dateStart').value;
+            const end = document.getElementById('dateEnd').value;
+            rangeLabel.textContent = start && end ? `${start} – ${end}` : 'Filtered range';
+            insightsEl.innerHTML = '';
+            if (!data.length) {
+                insightsEl.innerHTML = '<li class="insight-bullet">No data in the selected range.</li>';
+                return;
+            }
+            const series = groupByDate(data);
+            const peak = series.reduce((top, cur) => cur.created > (top?.created || 0) ? cur : top, null);
+            const kpis = calcKPIs(data);
+            const mergeRate = kpis.created ? Math.round((kpis.merged / kpis.created) * 100) : 0;
+            const cycleTrend = kpis.cycleAvg;
+            const reviewTrend = groupByWeek(data).map(w => w.avgReview).filter(v => v);
+            const reviewChange = reviewTrend.length > 1 ? (reviewTrend[reviewTrend.length - 1] - reviewTrend[0]).toFixed(1) : '0.0';
+            const items = [
+                `Peak activity on ${peak?.date || 'n/a'} with ${peak?.created || 0} PRs created.`,
+                `Average cycle time is ${cycleTrend} days across the selected window.`,
+                `Merge rate is ${mergeRate}% of created PRs.`,
+                `Review time change across weeks: ${reviewChange} hrs (last vs first).`
+            ];
+            items.forEach(text => {
+                const li = document.createElement('li');
+                li.className = 'insight-bullet';
+                li.textContent = text;
+                insightsEl.appendChild(li);
+            });
+        }
+
+        async function updateDashboard() {
+            const response = await fetchMetricsData();
+            const filtered = response.items || [];
+            const kpis = response.kpis ? {
+                created: response.kpis.created || 0,
+                merged: response.kpis.merged || 0,
+                closed: response.kpis.closed_without_merge || 0,
+                cycleAvg: response.kpis.cycle_avg || 0
+            } : calcKPIs(filtered);
+            renderKPIs(kpis);
+            renderLineChart(filtered);
+            renderCycleBar(filtered);
+            renderStackedStatus(filtered);
+            renderReviewBar(filtered);
+            renderInsights(filtered);
+            metricsData = filtered;
+            window.currentFilteredData = filtered;
+        }
+
+        function setLoading(active) {
+            const overlay = document.getElementById('loadingOverlay');
+            const applyBtn = document.getElementById('applyFiltersBtn');
+            if (overlay) overlay.style.display = active ? 'flex' : 'none';
+            if (applyBtn) applyBtn.disabled = active;
+        }
+
+        async function exportPdf() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'pt', 'a4');
+            const node = document.getElementById('reportContent') || document.getElementById('metricsContent');
+            const canvas = await html2canvas(node, { scale: 1.2, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            const pageWidth = doc.internal.pageSize.getWidth() - 40;
+            const ratio = canvas.height / canvas.width;
+            doc.text('GitHub PR Metrics', 20, 30);
+            doc.addImage(imgData, 'PNG', 20, 50, pageWidth, pageWidth * ratio);
+            doc.save('pr-metrics.pdf');
+        }
+
+        function attachEvents() {
+            document.getElementById('enterpriseFilter').addEventListener('change', async () => {
+                populateRepositories();
+                await populateLabels();
+            });
+            document.getElementById('repoFilter').addEventListener('change', async () => {
+                await populateLabels();
+            });
+            document.getElementById('labelFilter').addEventListener('change', () => {});
+            document.getElementById('dateStart').addEventListener('change', () => {});
+            document.getElementById('dateEnd').addEventListener('change', () => {});
+            document.getElementById('applyFiltersBtn').addEventListener('click', () => applyFilters());
+            document.getElementById('exportPdfBtn').addEventListener('click', exportPdf);
+            document.getElementById('cardCreated').addEventListener('click', () => openPrList('created'));
+            document.getElementById('cardMerged').addEventListener('click', () => openPrList('merged'));
+            document.getElementById('cardClosed').addEventListener('click', () => openPrList('closed'));
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            populateRepositories();
+            await populateLabels();
+            initDates();
+            attachEvents();
+            await applyFilters();
+        });
+
+        async function applyFilters() {
+            setLoading(true);
+            try {
+                await updateDashboard();
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function openPrList(listType) {
+            const loading = document.getElementById('prListLoading');
+            const empty = document.getElementById('prListEmpty');
+            const list = document.getElementById('prList');
+            loading.style.display = 'flex';
+            empty.style.display = 'none';
+            list.innerHTML = '';
+            const data = await fetchPrList(listType);
+            renderPrListModal(data.items || [], listType);
+        }
+    </script>
+</body>
+</html>
