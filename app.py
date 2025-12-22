@@ -890,7 +890,8 @@ def get_prs():
         
         # Create cache key based on request parameters
         cache_key_base = f"{enterprise}_{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}_p{page}_pp{per_page}"
-        cache_key = f"prs_{cache_key_base}_comments_{include_comments}"
+        # Versioned cache key to ensure new fields (display_state/is_draft) propagate
+        cache_key = f"prs_{cache_key_base}_v2_comments_{include_comments}"
         logger.debug(f"Cache key: {cache_key}")
         
         # Check database cache first (3 minute TTL for PR details)
@@ -1008,11 +1009,18 @@ def get_prs():
             pr_body = pr.get('body') or ''
             jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
             jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
+
+            # Preserve GitHub state but surface draft explicitly for UI consumers
+            is_draft = pr.get('draft', False)
+            display_state = 'draft' if is_draft else pr['state']
             
             formatted_prs.append({
                 'title': pr_title,
                 'number': pr['number'],
                 'state': pr['state'],
+                'display_state': display_state,
+                'is_draft': is_draft,
+                'draft': is_draft,
                 'created_at': pr['created_at'],
                 'updated_at': pr['updated_at'],
                 'last_comment_at': last_comment_date,

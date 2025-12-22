@@ -664,7 +664,7 @@
         const jiraTicketsPerPage = 10; // Show 10 JIRA tickets per page
         
         // Pagination variables for PR lists
-        let allPRs = []; // Store all PRs data
+        let allPRs = []; // Store current page PRs (server-paginated)
         let currentPRPage = 1;
         const prsPerPage = 6; // Show 6 PRs per page
         
@@ -1156,7 +1156,7 @@
             if (type === 'labeled') {
                 currentLabels.forEach(label => params.append('labels', label));
             }
-            
+
             fetch(`/api/prs?${params}`)
                 .then(response => response.json())
                 .then(data => {
@@ -1171,9 +1171,9 @@
                     allPRs = prs; // current page items only
                     const totalPages = data.total_pages || 1;
                     const totalItems = data.total_items || prs.length;
-                    
+
                     displayPaginatedPRs();
-                    // Show pagination controls
+                    // Show pagination controls (server pagination only)
                     if (totalPages > 1) {
                         document.getElementById('prModalFooter').style.display = 'block';
                         updatePRPagination(totalPages, totalItems);
@@ -1198,10 +1198,10 @@
                 }
             }
         }
-        
+
         function displayPaginatedPRs() {
             const modalBody = document.getElementById('modalBody');
-            const paginatedPRs = allPRs; // already server-paginated items
+            const paginatedPRs = allPRs;
             
             if (!paginatedPRs || paginatedPRs.length === 0) {
                 modalBody.innerHTML = '<p class="text-center text-muted">No pull requests found.</p>';
@@ -1213,6 +1213,9 @@
             paginatedPRs.forEach(pr => {
                         const createdDate = new Date(pr.created_at).toLocaleDateString();
                         const updatedDate = new Date(pr.updated_at).toLocaleDateString();
+                        const isDraft = pr.is_draft ?? pr.draft ?? false;
+                        const displayState = pr.display_state || (isDraft ? 'draft' : pr.state);
+                        const badgeColor = displayState === 'draft' ? 'secondary' : (displayState === 'open' ? 'success' : 'secondary');
                         
                         let lastCommentInfo = '';
                         // Show last comment information only for open PRs (available/labeled)
@@ -1300,7 +1303,7 @@
                         ).join('');
                         
                         html += `
-                            <div class="pr-item ${pr.state}">
+                            <div class="pr-item ${displayState}">
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div class="flex-grow-1">
                                         <h6 class="mb-1">
@@ -1316,8 +1319,8 @@
                                         ${jiraInfo}
                                         ${labels ? `<div class="mt-1">${labels}</div>` : ''}
                                     </div>
-                                    <span class="badge bg-${pr.state === 'open' ? 'success' : 'secondary'} ms-2">
-                                        ${pr.state}
+                                    <span class="badge bg-${badgeColor} ms-2 text-uppercase">
+                                        ${displayState}
                                     </span>
                                 </div>
                             </div>
@@ -1335,15 +1338,6 @@
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         `;
                         modalBody.insertBefore(perfTip, modalBody.firstChild);
-                    }
-                    
-                    // Show pagination controls
-                    const totalPages = Math.ceil(allPRs.length / prsPerPage);
-                    if (totalPages > 1) {
-                        document.getElementById('prModalFooter').style.display = 'block';
-                        updatePRPagination(totalPages);
-                    } else {
-                        document.getElementById('prModalFooter').style.display = 'none';
                     }
                 }
             
