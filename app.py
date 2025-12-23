@@ -1256,6 +1256,8 @@ def get_metrics_dashboard():
         created_count = len(created_items)
         merged_count = len(merged_items)
         closed_without_merge = len(closed_items)
+        # Treat remaining PRs created on this day that were not merged or closed as "open" for mix chart
+        open_count = max(created_count - merged_count - closed_without_merge, 0)
 
         cycles = []
         reviews = []
@@ -1279,7 +1281,7 @@ def get_metrics_dashboard():
             'closed': closed_without_merge,
             'cycle': avg_cycle,
             'reviewHrs': avg_review,
-            'openCount': 0,
+            'openCount': open_count,
             'mergedCount': merged_count
         })
 
