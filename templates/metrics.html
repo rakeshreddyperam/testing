@@ -354,7 +354,7 @@
         function groupByDate(data) {
             const map = new Map();
             data.forEach(d => {
-                map.set(d.date, { created: d.created, merged: d.merged });
+                map.set(d.date, { created: d.created, merged: d.merged, cycle: d.cycle, reviewHrs: d.reviewHrs });
             });
             return Array.from(map.entries())
                 .sort((a, b) => new Date(a[0]) - new Date(b[0]))
@@ -651,6 +651,12 @@
                 insightsEl.innerHTML = '<li class="insight-bullet">No data in the selected range.</li>';
                 return;
             }
+            const median = arr => {
+                if (!arr.length) return 0;
+                const sorted = [...arr].sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            };
             const series = groupByDate(data);
             const peak = series.reduce((top, cur) => cur.created > (top?.created || 0) ? cur : top, null);
             const kpis = calcKPIs(data);
@@ -658,11 +664,24 @@
             const cycleTrend = kpis.cycleAvg;
             const reviewTrend = groupByWeek(data).map(w => w.avgReview).filter(v => v);
             const reviewChange = reviewTrend.length > 1 ? (reviewTrend[reviewTrend.length - 1] - reviewTrend[0]).toFixed(1) : '0.0';
+            const cycles = data.map(d => d.cycle).filter(v => Number.isFinite(v) && v > 0);
+            const cycleMedian = cycles.length ? median(cycles).toFixed(1) : '0.0';
+            const weeks = groupByWeek(data);
+            const bestCycleWeek = weeks.filter(w => w.avgCycle > 0).sort((a, b) => a.avgCycle - b.avgCycle)[0];
+            const bestWeekLabel = bestCycleWeek ? bestCycleWeek.weekLabel : 'n/a';
+            const bestWeekCycle = bestCycleWeek ? bestCycleWeek.avgCycle.toFixed(1) : '0.0';
+            const firstWeekRate = weeks.length ? Math.round(((weeks[0].merged || 0) / Math.max((weeks[0].merged || 0) + (weeks[0].open || 0), 1)) * 100) : 0;
+            const lastWeekRate = weeks.length ? Math.round(((weeks[weeks.length - 1].merged || 0) / Math.max((weeks[weeks.length - 1].merged || 0) + (weeks[weeks.length - 1].open || 0), 1)) * 100) : 0;
+            const mergedVsCreatedDelta = weeks.length > 1 ? lastWeekRate - firstWeekRate : 0;
+            const latestReview = weeks.length ? (weeks[weeks.length - 1].avgReview || 0).toFixed(1) : '0.0';
+            const bestReviewWeek = weeks.filter(w => w.avgReview > 0).sort((a, b) => a.avgReview - b.avgReview)[0];
+            const bestReviewLabel = bestReviewWeek ? bestReviewWeek.weekLabel : 'n/a';
+            const bestReview = bestReviewWeek ? bestReviewWeek.avgReview.toFixed(1) : '0.0';
             const items = [
                 `Peak activity on ${peak?.date || 'n/a'} with ${peak?.created || 0} PRs created.`,
-                `Average cycle time is ${cycleTrend} days across the selected window.`,
-                `Merge rate is ${mergeRate}% of created PRs.`,
-                `Review time change across weeks: ${reviewChange} hrs (last vs first).`
+                `Cycle time avg ${cycleTrend} days; median ${cycleMedian} days; fastest week ${bestWeekLabel} at ${bestWeekCycle} days.`,
+                `Merge rate ${mergeRate}% of created PRs; change since first week: ${mergedVsCreatedDelta} pts.`,
+                `Review time change ${reviewChange} hrs (last vs first); latest weekly avg ${latestReview} hrs; best week ${bestReviewLabel} at ${bestReview} hrs.`
             ];
             items.forEach(text => {
                 const li = document.createElement('li');
