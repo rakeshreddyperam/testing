@@ -611,7 +611,17 @@
                     responsive: true,
                     plugins: {
                         legend: { position: 'bottom' },
-                        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } }
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const idx = ctx.dataIndex;
+                                    const label = ctx.dataset.label || '';
+                                    const count = label.toLowerCase() === 'open' ? open[idx] : merged[idx];
+                                    const pct = ctx.parsed.y;
+                                    return `${label}: ${pct}% (${count} PRs)`;
+                                }
+                            }
+                        }
                     },
                     scales: {
                         x: { title: { display: true, text: 'Week' } },
