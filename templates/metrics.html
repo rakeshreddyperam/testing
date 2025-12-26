@@ -14,7 +14,17 @@
             color: #1f2937;
         }
         .page-shell {
-            max-width: 1400px;
+            max-width: 100%;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+
+        @media (min-width: 1400px) {
+            .page-shell {
+                max-width: 2100px;
+                padding-left: 1.5rem;
+                padding-right: 1.5rem;
+            }
         }
         .card-soft {
             border: 1px solid #e5e7eb;
