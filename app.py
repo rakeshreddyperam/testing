@@ -3,7 +3,7 @@ import requests
 import os
 import json
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import logging
 import time
@@ -1248,6 +1248,17 @@ def get_metrics_dashboard():
     all_dates = sorted(set(list(created_bucket.keys()) + list(merged_bucket.keys()) + list(closed_bucket.keys())))
 
     day_items = []
+    aging_weeks = defaultdict(lambda: {'0-3': 0, '4-7': 0, '8-14': 0, '>14': 0})
+    aging_labels = {}
+
+    def get_week_bucket(dt_obj):
+        # Align to Monday
+        weekday = dt_obj.weekday()  # Monday=0
+        start = dt_obj - timedelta(days=weekday)
+        end = start + timedelta(days=6)
+        label = f"{start.day:02}/{start.month:02}–{end.day:02}/{end.month:02}\n{start.year}"
+        return start.date().isoformat(), label
+
     for day in all_dates:
         created_items = created_bucket.get(day, [])
         merged_items = merged_bucket.get(day, [])
@@ -1284,6 +1295,46 @@ def get_metrics_dashboard():
             'openCount': open_count,
             'mergedCount': merged_count
         })
+
+    # Build aging distribution for currently open PRs
+    now_dt = datetime.utcnow()
+    for pr in prs:
+        if pr.get('state') != 'open':
+            continue
+        pr_labels_raw = [lbl.get('name') for lbl in pr.get('labels', [])]
+        if label and label.lower() != 'all':
+            target = label.lower()
+            pr_label_lc = [l.lower() for l in pr_labels_raw if l]
+            if target not in pr_label_lc:
+                continue
+        created_dt = parse_date(pr.get('created_at'))
+        if not created_dt:
+            continue
+        if start_dt and created_dt.date() < start_dt.date():
+            continue
+        if end_dt and created_dt.date() > end_dt.date():
+            continue
+        age_days = (now_dt - created_dt).days
+        if age_days <= 3:
+            bucket_key = '0-3'
+        elif age_days <= 7:
+            bucket_key = '4-7'
+        elif age_days <= 14:
+            bucket_key = '8-14'
+        else:
+            bucket_key = '>14'
+        week_key, week_label = get_week_bucket(created_dt)
+        aging_weeks[week_key][bucket_key] += 1
+        aging_labels[week_key] = week_label
+
+    aging_list = [
+        {
+            'week_key': wk,
+            'week_label': aging_labels.get(wk, wk),
+            'buckets': aging_weeks[wk]
+        }
+        for wk in sorted(aging_weeks.keys())
+    ]
 
     day_items.sort(key=lambda x: x['date'])
 
@@ -1326,7 +1377,8 @@ def get_metrics_dashboard():
             'cycle_avg': avg_cycle,
             'review_delta': review_delta
         },
-        'range': {'start': start, 'end': end}
+        'range': {'start': start, 'end': end},
+        'aging': aging_list
     })
 
 

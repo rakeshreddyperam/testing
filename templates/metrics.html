@@ -231,8 +231,8 @@
             <div class="col-lg-6">
                 <div class="card chart-card p-3 h-100">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="section-title">Average Review Time</span>
-                        <span class="chip-label">Hours, weekly</span>
+                        <span class="section-title">PR Aging Distribution (Weekly)</span>
+                        <span class="chip-label">Open PRs by age</span>
                     </div>
                     <canvas id="barReview"></canvas>
                 </div>
@@ -393,13 +393,13 @@
                 const res = await fetch(`/api/metrics?${params.toString()}`);
                 if (!res.ok) {
                     console.error('Metrics fetch failed', res.status, res.statusText);
-                    return { items: [], kpis: { created: 0, merged: 0, closed_without_merge: 0, cycle_avg: 0 }, insights: {}, range: { start, end } };
+                    return { items: [], kpis: { created: 0, merged: 0, closed_without_merge: 0, cycle_avg: 0 }, insights: {}, range: { start, end }, aging: [] };
                 }
                 const data = await res.json();
                 return data;
             } catch (err) {
                 console.error('Metrics fetch error', err);
-                return { items: [], kpis: { created: 0, merged: 0, closed_without_merge: 0, cycle_avg: 0 }, insights: {}, range: { start, end } };
+                return { items: [], kpis: { created: 0, merged: 0, closed_without_merge: 0, cycle_avg: 0 }, insights: {}, range: { start, end }, aging: [] };
             }
         }
 
@@ -641,26 +641,50 @@
             });
         }
 
-        function renderReviewBar(data) {
-            const weeks = groupByWeek(data);
-            const labels = weeks.map(w => w.weekLabel);
-            const values = weeks.map(w => w.avgReview);
+        function renderAgingBar(agingData) {
+            const labels = agingData.map(w => w.week_label);
+            const buckets = ['0-3', '4-7', '8-14', '>14'];
+            const colors = {
+                '0-3': '#22c55e',
+                '4-7': '#3b82f6',
+                '8-14': '#f59e0b',
+                '>14': '#ef4444'
+            };
+            const datasets = buckets.map(bucket => ({
+                label: `${bucket} days`,
+                data: agingData.map(w => (w.buckets && w.buckets[bucket]) || 0),
+                backgroundColor: colors[bucket],
+                stack: 'aging'
+            }));
             const ctx = barReviewCtx();
             if (charts.review) charts.review.destroy();
             charts.review = new Chart(ctx, {
                 type: 'bar',
-                data: { labels, datasets: [{ label: 'Avg Review Time (hrs)', data: values, backgroundColor: '#6366f1' }] },
+                data: { labels, datasets },
                 options: {
-                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const label = ctx.dataset.label || '';
+                                    const val = ctx.raw || 0;
+                                    return `${label}: ${val} PRs`;
+                                },
+                                title: items => (items && items.length ? items[0].label.replace('\n', ' ') : '')
+                            }
+                        }
+                    },
                     scales: {
-                        x: { title: { display: true, text: 'Week' } },
-                        y: { beginAtZero: true, title: { display: true, text: 'Review time (hours)' } }
+                        x: { stacked: true, title: { display: true, text: 'Week' } },
+                        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Open PRs (count)' } }
                     }
                 }
             });
         }
 
-        function renderInsights(data) {
+        function renderInsights(data, agingData = []) {
             const insightsEl = document.getElementById('insightsList');
             const rangeLabel = document.getElementById('insightRange');
             const start = document.getElementById('dateStart').value;
@@ -682,8 +706,6 @@
             const kpis = calcKPIs(data);
             const mergeRate = kpis.created ? Math.round((kpis.merged / kpis.created) * 100) : 0;
             const cycleTrend = kpis.cycleAvg;
-            const reviewTrend = groupByWeek(data).map(w => w.avgReview).filter(v => v);
-            const reviewChange = reviewTrend.length > 1 ? (reviewTrend[reviewTrend.length - 1] - reviewTrend[0]).toFixed(1) : '0.0';
             const cycles = data.map(d => d.cycle).filter(v => Number.isFinite(v) && v > 0);
             const cycleMedian = cycles.length ? median(cycles).toFixed(1) : '0.0';
             const weeks = groupByWeek(data);
@@ -693,16 +715,22 @@
             const firstWeekRate = weeks.length ? Math.round(((weeks[0].merged || 0) / Math.max((weeks[0].merged || 0) + (weeks[0].open || 0), 1)) * 100) : 0;
             const lastWeekRate = weeks.length ? Math.round(((weeks[weeks.length - 1].merged || 0) / Math.max((weeks[weeks.length - 1].merged || 0) + (weeks[weeks.length - 1].open || 0), 1)) * 100) : 0;
             const mergedVsCreatedDelta = weeks.length > 1 ? lastWeekRate - firstWeekRate : 0;
-            const latestReview = weeks.length ? (weeks[weeks.length - 1].avgReview || 0).toFixed(1) : '0.0';
-            const bestReviewWeek = weeks.filter(w => w.avgReview > 0).sort((a, b) => a.avgReview - b.avgReview)[0];
-            const bestReviewLabel = bestReviewWeek ? bestReviewWeek.weekLabel : 'n/a';
-            const bestReview = bestReviewWeek ? bestReviewWeek.avgReview.toFixed(1) : '0.0';
+            const agingTotals = agingData.reduce((acc, wk) => {
+                const buckets = wk.buckets || {};
+                Object.keys(acc).forEach(key => { acc[key] += buckets[key] || 0; });
+                return acc;
+            }, { '0-3': 0, '4-7': 0, '8-14': 0, '>14': 0 });
+            const agingTotalOpen = Object.values(agingTotals).reduce((a, b) => a + b, 0);
+            const oldestBucket = Object.entries(agingTotals).sort((a, b) => b[1] - a[1]).find(([, v]) => v > 0);
             const items = [
                 `Peak activity on ${peak?.date || 'n/a'} with ${peak?.created || 0} PRs created.`,
                 `Cycle time avg ${cycleTrend} days; median ${cycleMedian} days; fastest week ${bestWeekLabel} at ${bestWeekCycle} days.`,
-                `Merge rate ${mergeRate}% of created PRs; change since first week: ${mergedVsCreatedDelta} pts.`,
-                `Review time change ${reviewChange} hrs (last vs first); latest weekly avg ${latestReview} hrs; best week ${bestReviewLabel} at ${bestReview} hrs.`
+                `Merge rate ${mergeRate}% of created PRs; change since first week: ${mergedVsCreatedDelta} pts.`
             ];
+            if (agingTotalOpen > 0) {
+                const agingSummary = `Open PR aging mix: ${agingTotals['0-3']} ≤3d, ${agingTotals['4-7']} 4-7d, ${agingTotals['8-14']} 8-14d, ${agingTotals['>14']} 15d+. Oldest concentration in ${oldestBucket ? oldestBucket[0] : 'n/a'} days bucket.`;
+                items.push(agingSummary);
+            }
             items.forEach(text => {
                 const li = document.createElement('li');
                 li.className = 'insight-bullet';
@@ -724,8 +752,8 @@
             renderLineChart(filtered);
             renderCycleBar(filtered);
             renderStackedStatus(filtered);
-            renderReviewBar(filtered);
-            renderInsights(filtered);
+            renderAgingBar(response.aging || []);
+            renderInsights(filtered, response.aging || []);
             metricsData = filtered;
             window.currentFilteredData = filtered;
         }
@@ -745,8 +773,13 @@
             const imgData = canvas.toDataURL('image/png');
             const pageWidth = doc.internal.pageSize.getWidth() - 40;
             const ratio = canvas.height / canvas.width;
+            const enterpriseSel = document.getElementById('enterpriseFilter');
+            const repoSel = document.getElementById('repoFilter');
+            const enterpriseLabel = enterpriseSel?.options[enterpriseSel.selectedIndex]?.text || 'Enterprise';
+            const repoLabel = repoSel?.options[repoSel.selectedIndex]?.text || 'Repository';
             doc.text('GitHub PR Metrics', 20, 30);
-            doc.addImage(imgData, 'PNG', 20, 50, pageWidth, pageWidth * ratio);
+            doc.text(`${enterpriseLabel} | ${repoLabel}`, 20, 46);
+            doc.addImage(imgData, 'PNG', 20, 60, pageWidth, pageWidth * ratio);
             doc.save('pr-metrics.pdf');
         }
 
