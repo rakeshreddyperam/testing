@@ -447,7 +447,7 @@
             const fmt = (dt) => `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`;
             return {
                 key: start.toISOString().slice(0, 10),
-                label: `${fmt(start)}–${fmt(end)}`
+                label: `${fmt(start)}–${fmt(end)}\n${start.getFullYear()}`
             };
         }
 

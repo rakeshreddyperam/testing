@@ -133,8 +133,8 @@ class GitHubService:
         
         all_prs = []
         page = 1
-        # Higher limit for open PRs to get all reviewers, lower for closed to avoid performance issues
-        max_pages = 10 if state == 'open' else 5
+        # Higher limit to cover large repos; still capped for safety
+        max_pages = 40
         
         try:
             while page <= max_pages:
@@ -1182,7 +1182,7 @@ def get_metrics_dashboard():
     prs = []
     page = 1
     try:
-        while page <= 10:
+        while page <= 40:
             resp = requests.get(
                 f'{BASE_URL}/repos/{repo}/pulls',
                 headers=headers,
