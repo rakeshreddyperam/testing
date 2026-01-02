@@ -1256,7 +1256,8 @@ def get_metrics_dashboard():
         weekday = dt_obj.weekday()  # Monday=0
         start = dt_obj - timedelta(days=weekday)
         end = start + timedelta(days=6)
-        label = f"{start.day:02}/{start.month:02}–{end.day:02}/{end.month:02}\n{start.year}"
+        # Use the ending year for cross-year weeks to keep a single year label (e.g., 2026)
+        label = f"{start.day:02}/{start.month:02}–{end.day:02}/{end.month:02}\n{end.year}"
         return start.date().isoformat(), label
 
     for day in all_dates:
