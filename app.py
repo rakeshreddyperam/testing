@@ -3,13 +3,14 @@ import requests
 import os
 import json
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import logging
 import time
 from functools import wraps
 from werkzeug.utils import secure_filename
 from cache_db import cache_db
+from collections import defaultdict
 
 load_dotenv()
 
@@ -80,8 +81,19 @@ def rate_limit(max_requests=60, window=60):
 
 # GitHub API configuration
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+GITHUB_TOKEN_ZDI = os.getenv('GITHUB_TOKEN_ZDI')
+GITHUB_TOKEN_IE = os.getenv('GITHUB_TOKEN_IE')
 GITHUB_REPO = os.getenv('GITHUB_REPO', 'microsoft/vscode')  # Default to a public repo
 BASE_URL = 'https://api.github.com'
+
+# Helper function to get enterprise token
+def get_enterprise_token(enterprise):
+    if enterprise == 'zdi':
+        return GITHUB_TOKEN_ZDI
+    elif enterprise == 'ie':
+        return GITHUB_TOKEN_IE
+    else:
+        return GITHUB_TOKEN
 
 # JIRA API configuration
 JIRA_URL = os.getenv('JIRA_URL')  # e.g., 'https://yourcompany.atlassian.net'
@@ -121,7 +133,8 @@ class GitHubService:
         
         all_prs = []
         page = 1
-        max_pages = 5  # Limit to prevent infinite loops
+        # Higher limit to cover large repos; still capped for safety
+        max_pages = 40
         
         try:
             while page <= max_pages:
@@ -633,6 +646,13 @@ def dashboard():
     logger.info("Dashboard accessed")
     return render_template('dashboard.html')
 
+
+@app.route('/metrics')
+def metrics():
+    """Executive metrics dashboard"""
+    logger.info("Metrics dashboard accessed")
+    return render_template('metrics.html')
+
 @app.route('/api/pr-stats')
 @rate_limit(max_requests=30, window=60)
 def pr_stats():
@@ -644,21 +664,27 @@ def pr_stats():
         month = request.args.get('month')
         labels = request.args.getlist('labels')
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        enterprise = request.args.get('enterprise', 'zdi')  # Default to zdi
         
-        logger.info(f"DEBUG - PR STATS REQUEST - repo={repo}, month={month}, labels={labels}")
-        logger.debug(f"Getting PR stats for repo={repo}, month={month}, labels={labels}")
+        logger.info(f"DEBUG - PR STATS REQUEST - enterprise={enterprise}, repo={repo}, month={month}, labels={labels}")
+        logger.debug(f"Getting PR stats for enterprise={enterprise}, repo={repo}, month={month}, labels={labels}")
+        
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
         
         # Create cache key for stats
-        stats_cache_key = f"pr_stats_{repo}_{month or 'all'}_{','.join(sorted(labels))}"
+        stats_cache_key = f"pr_stats_{enterprise}_{repo}_{month or 'all'}_{','.join(sorted(labels))}"
         
         # Check database cache first (5 minute TTL for fast responses)
-        cached_stats = cache_db.get_cache(stats_cache_key)
+        # Skip cache if refresh is requested
+        skip_cache = request.args.get('refresh', '').lower() == 'true'
+        cached_stats = None if skip_cache else cache_db.get_cache(stats_cache_key)
         if cached_stats:
             logger.info(f"Returning CACHED stats from DB (saved {time.time() - start_time:.2f}s)")
             return jsonify(cached_stats)
         
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         # Use same logic as PR details endpoint - force fresh API call
         logger.info(f"PR STATS DEBUG - Making DIRECT GitHub API call for open PRs")
@@ -668,7 +694,7 @@ def pr_stats():
         api_url = f'https://api.github.com/repos/{repo}/pulls'
         headers = {
             'Accept': 'application/vnd.github.v3+json',
-            'Authorization': f'token {GITHUB_TOKEN}',
+            'Authorization': f'token {token}',
             'User-Agent': 'GitHub-PR-Dashboard'
         }
         
@@ -716,7 +742,7 @@ def pr_stats():
         all_closed_prs = []
         page = 1
         
-        while page <= 3:  # Max 3 pages for closed PRs (300 closed PRs max)
+        while page <= 20:  # Max 20 pages for closed PRs (2000 closed PRs max)
             params = {
                 'state': 'closed',
                 'per_page': 100,
@@ -850,6 +876,7 @@ def get_prs():
         month = request.args.get('month')
         labels = request.args.getlist('labels')
         repo = request.args.get('repo', GITHUB_REPO)  # Use repo from request or default
+        enterprise = request.args.get('enterprise', 'zdi')  # Default to zdi
         sort_by = request.args.get('sort', 'newest')  # newest, oldest, most_recent, updated
         include_comments = request.args.get('include_comments', 'false').lower() == 'true'
         # Server-side pagination params
@@ -866,9 +893,13 @@ def get_prs():
         
         logger.debug(f"Getting PRs: type={pr_type}, month={month}, labels={labels}, repo={repo}, sort={sort_by}, include_comments={include_comments}")
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create cache key based on request parameters
-        cache_key_base = f"{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}_p{page}_pp{per_page}"
-        cache_key = f"prs_{cache_key_base}_comments_{include_comments}"
+        cache_key_base = f"{enterprise}_{pr_type}_{month or 'all'}_{','.join(sorted(labels))}_{repo}_{sort_by}_p{page}_pp{per_page}"
+        # Versioned cache key to ensure new fields (display_state/is_draft) propagate
+        cache_key = f"prs_{cache_key_base}_v2_comments_{include_comments}"
         logger.debug(f"Cache key: {cache_key}")
         
         # Check database cache first (3 minute TTL for PR details)
@@ -877,8 +908,8 @@ def get_prs():
             logger.info(f"Returning cached PR data from DB (saved {time.time() - start_time:.2f}s)")
             return jsonify(cached_prs)
         
-        # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        # Create GitHub service for the requested repository with enterprise token
+        current_service = GitHubService(token, repo)
         
         if pr_type == 'labeled':
             # Get only open PRs and filter by labels
@@ -986,11 +1017,18 @@ def get_prs():
             pr_body = pr.get('body') or ''
             jira_keys = jira_service.extract_jira_keys(pr_title + ' ' + pr_body)
             jira_tickets = jira_service.get_multiple_tickets_status(jira_keys) if jira_keys else []
+
+            # Preserve GitHub state but surface draft explicitly for UI consumers
+            is_draft = pr.get('draft', False)
+            display_state = 'draft' if is_draft else pr['state']
             
             formatted_prs.append({
                 'title': pr_title,
                 'number': pr['number'],
                 'state': pr['state'],
+                'display_state': display_state,
+                'is_draft': is_draft,
+                'draft': is_draft,
                 'created_at': pr['created_at'],
                 'updated_at': pr['updated_at'],
                 'last_comment_at': last_comment_date,
@@ -1050,15 +1088,19 @@ def available_months():
     """Get available months from PRs"""
     try:
         repo = request.args.get('repo', GITHUB_REPO)
-        cache_key = f"months_{repo}"
+        enterprise = request.args.get('enterprise', 'zdi')
+        cache_key = f"months_{enterprise}_{repo}"
         
         # Check cache first (10 minute TTL)
         cached_months = cache_db.get_cache(cache_key)
         if cached_months:
             return jsonify(cached_months)
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         prs = current_service.get_pull_requests()
         months = set()
@@ -1083,15 +1125,19 @@ def available_labels():
     """Get available labels from PRs"""
     try:
         repo = request.args.get('repo', GITHUB_REPO)
-        cache_key = f"labels_{repo}"
+        enterprise = request.args.get('enterprise', 'zdi')
+        cache_key = f"labels_{enterprise}_{repo}"
         
         # Check cache first (10 minute TTL)
         cached_labels = cache_db.get_cache(cache_key)
         if cached_labels:
             return jsonify(cached_labels)
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         prs = current_service.get_pull_requests()
         labels = set()
@@ -1111,6 +1157,315 @@ def available_labels():
         # Return some default labels if there's an error
         return jsonify(['bug', 'feature', 'enhancement', 'documentation', 'performance'])
 
+
+@app.route('/api/metrics')
+@rate_limit(max_requests=20, window=60)
+def get_metrics_dashboard():
+    """Aggregated PR metrics for the metrics dashboard"""
+    repo = request.args.get('repo', GITHUB_REPO)
+    enterprise = request.args.get('enterprise', 'zdi')
+    label = request.args.get('label')
+    start = request.args.get('start')  # YYYY-MM-DD
+    end = request.args.get('end')      # YYYY-MM-DD
+
+    token = get_enterprise_token(enterprise)
+    headers = {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'GitHub-PR-Dashboard'
+    }
+    if token:
+        headers['Authorization'] = f'token {token}'
+
+    def parse_date(dt_str):
+        return datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%SZ') if dt_str else None
+
+    prs = []
+    page = 1
+    try:
+        while page <= 40:
+            resp = requests.get(
+                f'{BASE_URL}/repos/{repo}/pulls',
+                headers=headers,
+                params={'state': 'all', 'per_page': 100, 'page': page, 'sort': 'created', 'direction': 'desc'},
+                timeout=30
+            )
+            if resp.status_code != 200:
+                logger.error(f"Metrics fetch failed: {resp.status_code} {resp.text}")
+                return jsonify({'error': f'GitHub API error {resp.status_code}', 'details': resp.text}), 500
+            batch = resp.json()
+            if not batch:
+                break
+            prs.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
+    except Exception as exc:
+        logger.error(f"Metrics fetch exception: {exc}", exc_info=True)
+        return jsonify({'error': 'Failed to fetch metrics data', 'details': str(exc)}), 500
+
+    start_dt = datetime.strptime(start, '%Y-%m-%d') if start else None
+    end_dt = datetime.strptime(end, '%Y-%m-%d') if end else None
+
+    def in_range(dt_obj):
+        if not dt_obj:
+            return False
+        d = dt_obj.date()
+        if start_dt and d < start_dt.date():
+            return False
+        if end_dt and d > end_dt.date():
+            return False
+        return True
+
+    created_bucket = defaultdict(list)
+    merged_bucket = defaultdict(list)
+    closed_bucket = defaultdict(list)
+    created_trace = []
+    merged_trace = []
+
+    for pr in prs:
+        pr_labels_raw = [lbl.get('name') for lbl in pr.get('labels', [])]
+        if label and label.lower() != 'all':
+            target = label.lower()
+            pr_label_lc = [l.lower() for l in pr_labels_raw if l]
+            if target not in pr_label_lc:
+                continue
+
+        created_dt = parse_date(pr.get('created_at'))
+        merged_dt = parse_date(pr.get('merged_at'))
+        closed_dt = parse_date(pr.get('closed_at'))
+
+        if created_dt and in_range(created_dt):
+            created_bucket[created_dt.date().isoformat()].append(pr)
+            created_trace.append((created_dt.date().isoformat(), pr.get('number')))
+
+        if merged_dt and in_range(merged_dt):
+            merged_bucket[merged_dt.date().isoformat()].append(pr)
+            merged_trace.append((merged_dt.date().isoformat(), pr.get('number')))
+
+        if closed_dt and not merged_dt and in_range(closed_dt):
+            closed_bucket[closed_dt.date().isoformat()].append(pr)
+
+    all_dates = sorted(set(list(created_bucket.keys()) + list(merged_bucket.keys()) + list(closed_bucket.keys())))
+
+    day_items = []
+    aging_weeks = defaultdict(lambda: {'0-3': 0, '4-7': 0, '8-14': 0, '>14': 0})
+    aging_labels = {}
+
+    def get_week_bucket(dt_obj):
+        # Align to Monday
+        weekday = dt_obj.weekday()  # Monday=0
+        start = dt_obj - timedelta(days=weekday)
+        end = start + timedelta(days=6)
+        # Use the ending year for cross-year weeks to keep a single year label (e.g., 2026)
+        label = f"{start.day:02}/{start.month:02}–{end.day:02}/{end.month:02}\n{end.year}"
+        return start.date().isoformat(), label
+
+    for day in all_dates:
+        created_items = created_bucket.get(day, [])
+        merged_items = merged_bucket.get(day, [])
+        closed_items = closed_bucket.get(day, [])
+
+        created_count = len(created_items)
+        merged_count = len(merged_items)
+        closed_without_merge = len(closed_items)
+        # Treat remaining PRs created on this day that were not merged or closed as "open" for mix chart
+        open_count = max(created_count - merged_count - closed_without_merge, 0)
+
+        cycles = []
+        reviews = []
+        for pr in merged_items:
+            c_dt = parse_date(pr.get('created_at'))
+            m_dt = parse_date(pr.get('merged_at'))
+            if c_dt and m_dt:
+                delta_sec = max((m_dt - c_dt).total_seconds(), 0)
+                cycles.append(delta_sec / 86400)
+                reviews.append(delta_sec / 3600)
+
+        avg_cycle = round(sum(cycles) / len(cycles), 1) if cycles else 0
+        avg_review = round(sum(reviews) / len(reviews), 1) if reviews else 0
+
+        day_items.append({
+            'date': day,
+            'repo': repo,
+            'label': label or 'all',
+            'created': created_count,
+            'merged': merged_count,
+            'closed': closed_without_merge,
+            'cycle': avg_cycle,
+            'reviewHrs': avg_review,
+            'openCount': open_count,
+            'mergedCount': merged_count
+        })
+
+    # Build aging distribution for currently open PRs
+    now_dt = datetime.utcnow()
+    for pr in prs:
+        if pr.get('state') != 'open':
+            continue
+        pr_labels_raw = [lbl.get('name') for lbl in pr.get('labels', [])]
+        if label and label.lower() != 'all':
+            target = label.lower()
+            pr_label_lc = [l.lower() for l in pr_labels_raw if l]
+            if target not in pr_label_lc:
+                continue
+        created_dt = parse_date(pr.get('created_at'))
+        if not created_dt:
+            continue
+        if start_dt and created_dt.date() < start_dt.date():
+            continue
+        if end_dt and created_dt.date() > end_dt.date():
+            continue
+        age_days = (now_dt - created_dt).days
+        if age_days <= 3:
+            bucket_key = '0-3'
+        elif age_days <= 7:
+            bucket_key = '4-7'
+        elif age_days <= 14:
+            bucket_key = '8-14'
+        else:
+            bucket_key = '>14'
+        week_key, week_label = get_week_bucket(created_dt)
+        aging_weeks[week_key][bucket_key] += 1
+        aging_labels[week_key] = week_label
+
+    aging_list = [
+        {
+            'week_key': wk,
+            'week_label': aging_labels.get(wk, wk),
+            'buckets': aging_weeks[wk]
+        }
+        for wk in sorted(aging_weeks.keys())
+    ]
+
+    day_items.sort(key=lambda x: x['date'])
+
+    total_created = sum(d['created'] for d in day_items)
+    total_merged = sum(d['merged'] for d in day_items)
+    total_closed_no_merge = sum(d['closed'] for d in day_items)
+    all_cycles = [d['cycle'] for d in day_items if d['cycle']]
+    avg_cycle = round(sum(all_cycles) / len(all_cycles), 1) if all_cycles else 0
+
+    peak_day = max(day_items, key=lambda x: x['created'], default=None)
+    merge_rate = int((total_merged / total_created) * 100) if total_created else 0
+    review_series = [d['reviewHrs'] for d in day_items if d['reviewHrs']]
+    review_delta = None
+    if len(review_series) >= 2:
+        review_delta = round(review_series[-1] - review_series[0], 1)
+
+    # Debug logging to trace per-day counts and included PRs
+    try:
+        logger.info("/api/metrics filters repo=%s enterprise=%s start=%s end=%s label=%s", repo, enterprise, start, end, label)
+        logger.info("Metrics fetched %s PRs from GitHub", len(prs))
+        day_summary = {d['date']: {'created': d['created'], 'merged': d['merged'], 'closed': d['closed']} for d in day_items}
+        logger.info("Per-day summary: %s", day_summary)
+        logger.info("Created trace (date, #): %s", created_trace[:200])
+        logger.info("Merged trace (date, #): %s", merged_trace[:200])
+    except Exception:
+        pass
+
+    return jsonify({
+        'items': day_items,
+        'kpis': {
+            'created': total_created,
+            'merged': total_merged,
+            'closed_without_merge': total_closed_no_merge,
+            'cycle_avg': avg_cycle
+        },
+        'insights': {
+            'peak_date': peak_day['date'] if peak_day else None,
+            'peak_created': peak_day['created'] if peak_day else 0,
+            'merge_rate': merge_rate,
+            'cycle_avg': avg_cycle,
+            'review_delta': review_delta
+        },
+        'range': {'start': start, 'end': end},
+        'aging': aging_list
+    })
+
+
+@app.route('/api/metrics/pr-list')
+@rate_limit(max_requests=20, window=60)
+def get_metrics_pr_list():
+    """Return PR list for metrics cards based on date range and label filters."""
+    repo = request.args.get('repo', GITHUB_REPO)
+    enterprise = request.args.get('enterprise', 'zdi')
+    label = request.args.get('label')
+    start = request.args.get('start')
+    end = request.args.get('end')
+    list_type = request.args.get('type', 'created')  # created, merged, or closed
+
+    token = get_enterprise_token(enterprise)
+    current_service = GitHubService(token, repo)
+
+    start_dt = datetime.strptime(start, '%Y-%m-%d').date() if start else None
+    end_dt = datetime.strptime(end, '%Y-%m-%d').date() if end else None
+    if start_dt and end_dt and start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    def parse(dt_str):
+        return datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%SZ') if dt_str else None
+
+    try:
+        prs = current_service.get_pull_requests(state='all')
+        items = []
+        for pr in prs:
+            created_dt = parse(pr.get('created_at'))
+            merged_dt = parse(pr.get('merged_at'))
+            if not created_dt:
+                continue
+            pr_labels = [l.get('name') for l in pr.get('labels', [])]
+            if label and label.lower() != 'all':
+                target = label.lower()
+                if target not in [pl.lower() for pl in pr_labels if pl]:
+                    continue
+
+            if list_type == 'merged':
+                if not merged_dt:
+                    continue
+                d = merged_dt.date()
+            elif list_type == 'closed':
+                closed_dt = parse(pr.get('closed_at'))
+                if not closed_dt or merged_dt:
+                    continue
+                d = closed_dt.date()
+            else:
+                d = created_dt.date()
+
+            if start_dt and d < start_dt:
+                continue
+            if end_dt and d > end_dt:
+                continue
+
+            items.append({
+                'number': pr.get('number'),
+                'title': pr.get('title'),
+                'state': pr.get('state'),
+                'user': pr.get('user', {}).get('login'),
+                'created_at': pr.get('created_at'),
+                'merged_at': pr.get('merged_at'),
+                'closed_at': pr.get('closed_at'),
+                'html_url': pr.get('html_url'),
+                'labels': pr_labels
+            })
+
+        if list_type == 'merged':
+            items.sort(key=lambda x: x.get('merged_at') or x.get('created_at'), reverse=True)
+        elif list_type == 'closed':
+            items.sort(key=lambda x: x.get('closed_at') or x.get('created_at'), reverse=True)
+        else:
+            items.sort(key=lambda x: x['created_at'], reverse=True)
+        try:
+            logger.info("/api/metrics/pr-list filters repo=%s enterprise=%s type=%s start=%s end=%s label=%s", repo, enterprise, list_type, start_dt, end_dt, label)
+            logger.info("PR list total fetched=%s, returned=%s", len(prs), len(items))
+            sample_dates = [ (itm.get('number'), itm.get('created_at'), itm.get('merged_at'), itm.get('closed_at')) for itm in items[:50] ]
+            logger.info("PR list sample (num, created_at, merged_at, closed_at): %s", sample_dates)
+        except Exception:
+            pass
+        return jsonify({'items': items, 'count': len(items)})
+    except Exception as exc:
+        logger.error(f"Metrics PR list error: {exc}", exc_info=True)
+        return jsonify({'items': [], 'count': 0, 'error': str(exc)}), 500
+
 @app.route('/api/test-mock')
 def test_mock():
     """Test endpoint to force mock data"""
@@ -1126,12 +1481,55 @@ def get_reviewer_stats():
     try:
         repo = request.args.get('repo', GITHUB_REPO)
         month = request.args.get('month')
+        enterprise = request.args.get('enterprise', 'zdi')
         
-        # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
         
-        # Get open PRs
-        prs = current_service.get_pull_requests(state='open', month=month)
+        # Make direct API calls to get ALL open PRs for accurate reviewer stats
+        import requests
+        api_url = f'https://api.github.com/repos/{repo}/pulls'
+        headers = {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': f'token {token}',
+            'User-Agent': 'GitHub-PR-Dashboard'
+        }
+        
+        all_open_prs = []
+        page = 1
+        
+        while page <= 10:  # Max 10 pages for open PRs (1000 open PRs)
+            params = {
+                'state': 'open',
+                'per_page': 100,
+                'page': page,
+                'sort': 'created',
+                'direction': 'desc'
+            }
+            
+            response = requests.get(api_url, headers=headers, params=params, timeout=30)
+            if response.status_code == 200:
+                prs_page = response.json()
+                if not prs_page:
+                    break
+                all_open_prs.extend(prs_page)
+                if len(prs_page) < 100:
+                    break
+                page += 1
+            else:
+                logger.error(f"GitHub API error for reviewer stats: {response.status_code}")
+                break
+        
+        # Apply month filtering if specified
+        if month:
+            filtered_prs = []
+            for pr in all_open_prs:
+                created_date = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+                if created_date.strftime('%Y-%m') == month:
+                    filtered_prs.append(pr)
+            prs = filtered_prs
+        else:
+            prs = all_open_prs
         
         # Count PRs per reviewer
         reviewer_stats = {}
@@ -1200,12 +1598,16 @@ def get_reviewer_prs():
         reviewer = request.args.get('reviewer')
         repo = request.args.get('repo', GITHUB_REPO)
         month = request.args.get('month')
+        enterprise = request.args.get('enterprise', 'zdi')
         
         if not reviewer:
             return jsonify({'error': 'Reviewer parameter required'}), 400
         
+        # Get the appropriate token for the enterprise
+        token = get_enterprise_token(enterprise)
+        
         # Create GitHub service for the requested repository
-        current_service = GitHubService(GITHUB_TOKEN, repo) if repo != GITHUB_REPO else github_service
+        current_service = GitHubService(token, repo)
         
         # Get open PRs
         prs = current_service.get_pull_requests(state='open', month=month)
