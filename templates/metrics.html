@@ -643,7 +643,10 @@
                         x: {
                             title: { display: true, text: 'Week' },
                             ticks: {
-                                autoSkip: false,
+                                autoSkip: true,
+                                maxRotation: 80,
+                                minRotation: 80,
+                                maxTicksLimit: weeks.length,
                                 callback: (value, index) => (labels[index] || '').replace('\n', ' ')
                             }
                         },
