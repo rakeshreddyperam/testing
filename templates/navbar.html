@@ -1,0 +1,88 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+            <i class="fab fa-github me-2"></i>GitHub PR Dashboard
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/" id="nav-dashboard">
+                        <i class="fas fa-chart-line me-1"></i>Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/metrics" id="nav-metrics">
+                        <i class="fas fa-chart-bar me-1"></i>Metrics
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/jira-tickets" id="nav-jira">
+                        <i class="fas fa-ticket-alt me-1"></i>JIRA Tickets
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/users" id="nav-users">
+                        <i class="fas fa-users me-1"></i>Users
+                    </a>
+                </li>
+            </ul>
+            <span class="navbar-text text-light">
+                <i class="fas fa-calendar-alt me-1"></i>
+                <span id="current-date"></span>
+            </span>
+        </div>
+    </div>
+</nav>
+
+<script>
+    // Set active nav link based on current page
+    document.addEventListener('DOMContentLoaded', function() {
+        const path = window.location.pathname;
+        const navLinks = {
+            '/': 'nav-dashboard',
+            '/metrics': 'nav-metrics',
+            '/jira-tickets': 'nav-jira',
+            '/users': 'nav-users'
+        };
+        
+        const activeNavId = navLinks[path];
+        if (activeNavId) {
+            document.getElementById(activeNavId)?.classList.add('active');
+        }
+        
+        // Display current date
+        const dateEl = document.getElementById('current-date');
+        if (dateEl) {
+            const today = new Date();
+            const options = { year: 'numeric', month: 'short', day: 'numeric' };
+            dateEl.textContent = today.toLocaleDateString('en-US', options);
+        }
+    });
+</script>
+
+<style>
+    .navbar {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .navbar-brand {
+        font-weight: 600;
+        font-size: 1.25rem;
+    }
+    .nav-link {
+        transition: all 0.3s ease;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+    }
+    .nav-link:hover {
+        background-color: rgba(255,255,255,0.1);
+    }
+    .nav-link.active {
+        background-color: rgba(255,255,255,0.2);
+        font-weight: 500;
+    }
+</style>

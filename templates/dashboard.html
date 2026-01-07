@@ -7,6 +7,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        body {
+            background: #f5f7fa;
+        }
         .card:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
@@ -34,6 +37,44 @@
         .jira-status-card:active {
             transform: translateY(0px);
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .user-work-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid #17a2b8;
+        }
+        .user-work-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+        }
+        .user-work-card .card-title {
+            color: #495057;
+            font-weight: 600;
+        }
+        .user-work-card .work-stats {
+            font-size: 0.9rem;
+        }
+        .user-work-card .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .user-work-card .stat-label {
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+        .user-work-card .status-breakdown {
+            font-size: 0.8rem;
+        }
+        .user-work-card .status-breakdown small {
+            line-height: 1.6;
+        }
+        
+        .clickable-stat:hover {
+            background-color: rgba(0, 123, 255, 0.05);
+            border-radius: 4px;
+            padding: 4px;
+            margin: -4px;
         }
         
         .loading {
@@ -223,15 +264,14 @@
     </style>
 </head>
 <body class="bg-light">
+    {% include 'navbar.html' %}
+    
     <div class="container-fluid py-4">
         <div class="row mb-4">
-            <div class="col position-relative">
+            <div class="col">
                 <h1 class="text-center">
                     <i class="fab fa-github"></i> GitHub PR Dashboard
                 </h1>
-                <button class="btn btn-primary position-absolute end-0 top-0 mt-1" onclick="window.location.href='/metrics'">
-                    <i class="fas fa-chart-line me-1"></i> Metrics
-                </button>
             </div>
         </div>
         
@@ -251,16 +291,6 @@
                     <i class="fab fa-github me-1"></i>Repository:
                 </label>
                 <select id="repoFilter" class="form-select">
-                    <option value="Zelis-Data-Intelligence-ZDI/zdi-data-admin" selected>Zelis-Data-Intelligence-ZDI/zdi-data-admin</option>
-                    <option value="Zelis-Data-Intelligence-ZDI/Address-Service">Zelis-Data-Intelligence-ZDI/Address-Service</option>
-                    <option value="Zelis-Data-Intelligence-ZDI/smrf-hub">Zelis-Data-Intelligence-ZDI/smrf-hub</option>
-                    <option value="Zelis-Data-Intelligence-ZDI/astro-zse">Zelis-Data-Intelligence-ZDI/astro-zse</option>
-                    <option value="rakeshreddyperam/testing">rakeshreddyperam/testing</option>
-                    <option value="microsoft/vscode">microsoft/vscode</option>
-                    <option value="facebook/react">facebook/react</option>
-                    <option value="nodejs/node">nodejs/node</option>
-                    <option value="python/cpython">python/cpython</option>
-                    <option value="kubernetes/kubernetes">kubernetes/kubernetes</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -642,6 +672,7 @@
         let currentRepo = 'Zelis-Data-Intelligence-ZDI/zdi-data-admin';
         let requestQueue = new Map(); // Prevent duplicate requests
         let prModalInstance = null; // Store modal instance
+        let allUsers = []; // Store all users
         
         // Enterprise repository configurations
         const enterpriseRepos = {
@@ -1907,8 +1938,9 @@
                     </div>
                 `;
                 
-                // Only refresh JIRA status counts, not the entire dashboard
+                // Refresh JIRA status counts and user work status
                 refreshJiraData();
+                loadUserWorkStatus();
             })
             .catch(error => {
                 console.error('JIRA upload error:', error);
@@ -2340,17 +2372,442 @@
             }
         }
         
+        // Load user work status
+        async function loadUserWorkStatus() {
+            const container = document.getElementById('userWorkStatusCards');
+            
+            console.log('loadUserWorkStatus called');
+            
+            try {
+                // Fetch all required data in parallel
+                const [usersResponse, assignmentsResponse, ticketsResponse] = await Promise.all([
+                    fetch('/api/users'),
+                    fetch('/api/ticket-assignments'),
+                    fetch('/api/jira/tickets')
+                ]);
+                
+                console.log('API responses received:', {
+                    usersOk: usersResponse.ok,
+                    assignmentsOk: assignmentsResponse.ok,
+                    ticketsOk: ticketsResponse.ok
+                });
+                
+                if (!usersResponse.ok || !assignmentsResponse.ok || !ticketsResponse.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+                
+                const users = await usersResponse.json();
+                const assignmentsObj = await assignmentsResponse.json();
+                const ticketsData = await ticketsResponse.json();
+                
+                // Extract tickets and convert array to object keyed by ticket key
+                const ticketsArray = ticketsData.tickets || [];
+                const ticketsObj = {};
+                ticketsArray.forEach(ticket => {
+                    if (ticket.key) {
+                        ticketsObj[ticket.key] = ticket;
+                    }
+                });
+                
+                console.log('User Work Status Debug:');
+                console.log('Users:', users);
+                console.log('Tickets Object:', ticketsObj);
+                console.log('Sample ticket keys:', Object.keys(ticketsObj).slice(0, 3));
+                console.log('Sample ticket:', ticketsObj[Object.keys(ticketsObj)[0]]);
+                console.log('Assignments:', assignmentsObj);
+                
+                // If no users, show message
+                if (!users || users.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-12 text-center py-4">
+                            <p class="text-muted">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No users found. Please add users from the Users page.
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Build user cards
+                let cardsHtml = '';
+                
+                users.forEach(user => {
+                    // Count assignments for this user
+                    let assignedCount = 0;
+                    let reviewerCount = 0;
+                    let qaCount = 0;
+                    let statusCounts = { 'Work in progress': 0, 'New': 0, 'Done': 0, 'Testing': 0, 'Other': 0 };
+                    
+                    // Store ticket details for each category
+                    let developmentTickets = [];
+                    let reviewerTickets = [];
+                    let qaTickets = [];
+                    
+                    console.log(`\nChecking user: ${user.name}`);
+                    
+                    // First, iterate through ALL tickets to count assignees
+                    Object.keys(ticketsObj).forEach(ticketKey => {
+                        const ticket = ticketsObj[ticketKey];
+                        
+                        // Debug logging for first ticket
+                        if (assignedCount === 0 && ticket) {
+                            console.log(`  Comparing ticket assignee "${ticket.assignee}" with user "${user.name}"`);
+                        }
+                        
+                        // Check if user is assigned via JIRA assignee field
+                        // Match by name (case-insensitive and trimmed)
+                        if (ticket && ticket.assignee && 
+                            ticket.assignee.trim().toLowerCase() === user.name.trim().toLowerCase()) {
+                            assignedCount++;
+                            developmentTickets.push({ key: ticketKey, ...ticket });
+                            console.log(`  ✓ Match found for ticket ${ticketKey}`);
+                            // Count status
+                            const status = ticket.status;
+                            if (statusCounts.hasOwnProperty(status)) {
+                                statusCounts[status]++;
+                            } else {
+                                statusCounts['Other']++;
+                            }
+                        }
+                    });
+                    
+                    console.log(`  Development count for ${user.name}: ${assignedCount}`);
+                    
+                    // Then iterate through assignments for reviewer/QA
+                    Object.keys(assignmentsObj).forEach(ticketKey => {
+                        const assignment = assignmentsObj[ticketKey];
+                        
+                        // Debug first assignment
+                        if (reviewerCount === 0 && qaCount === 0 && Object.keys(assignmentsObj).length > 0) {
+                            console.log(`  First assignment key: ${ticketKey}`);
+                            console.log(`  First assignment:`, assignment);
+                            console.log(`  Comparing assignment.reviewer_l1 "${assignment.reviewer_l1}" and reviewer_l2 "${assignment.reviewer_l2}" with user.name "${user.name}"`);
+                            console.log(`  Ticket exists in ticketsObj:`, !!ticketsObj[ticketKey]);
+                        }
+                        
+                        // Check if user is reviewer level 1 (compare by user name) and not completed
+                        if (assignment.reviewer_l1 && assignment.reviewer_l1 === user.name && !assignment.reviewer_l1_completed) {
+                            reviewerCount++;
+                            const ticket = ticketsObj[ticketKey];
+                            console.log(`  Reviewer L1 match! Ticket key: "${ticketKey}"`);
+                            console.log(`  Ticket found:`, !!ticket);
+                            if (ticket) {
+                                reviewerTickets.push({ key: ticketKey, ...ticket, reviewerLevel: 'level 1' });
+                            } else {
+                                console.log(`  WARNING: Ticket ${ticketKey} not found in ticketsObj!`);
+                            }
+                        }
+                        
+                        // Check if user is reviewer level 2 (compare by user name) and not completed
+                        if (assignment.reviewer_l2 && assignment.reviewer_l2 === user.name && !assignment.reviewer_l2_completed) {
+                            reviewerCount++;
+                            const ticket = ticketsObj[ticketKey];
+                            console.log(`  Reviewer L2 match! Ticket key: "${ticketKey}"`);
+                            console.log(`  Ticket found:`, !!ticket);
+                            if (ticket) {
+                                reviewerTickets.push({ key: ticketKey, ...ticket, reviewerLevel: 'level 2' });
+                            } else {
+                                console.log(`  WARNING: Ticket ${ticketKey} not found in ticketsObj!`);
+                            }
+                        }
+                        
+                        // Check if user is QA (compare by user name) and not completed
+                        if (assignment.qa && assignment.qa === user.name && !assignment.qa_completed) {
+                            qaCount++;
+                            const ticket = ticketsObj[ticketKey];
+                            console.log(`  QA match! Ticket key: "${ticketKey}"`);
+                            console.log(`  Ticket found:`, !!ticket);
+                            if (ticket) {
+                                qaTickets.push({ key: ticketKey, ...ticket });
+                            } else {
+                                console.log(`  WARNING: Ticket ${ticketKey} not found in ticketsObj!`);
+                            }
+                        }
+                    });
+                    
+                    console.log(`  Reviewer count for ${user.name}: ${reviewerCount}`);
+                    console.log(`  QA count for ${user.name}: ${qaCount}`);
+                    
+                    // Store ticket data for modal access
+                    const userId = user.id || user.name;
+                    window.userTicketsData[userId + '_Development'] = developmentTickets;
+                    window.userTicketsData[userId + '_Reviewer'] = reviewerTickets;
+                    window.userTicketsData[userId + '_QA'] = qaTickets;
+                    window.userTicketsData[userId + '_name'] = user.name;
+                    
+                    // Role badge colors and display
+                    const roleColors = {
+                        'Developer': 'primary',
+                        'Development': 'primary',
+                        'QA': 'success',
+                        'Reviewer': 'info'
+                    };
+                    
+                    // Handle both single role (legacy) and multiple roles
+                    const userRoles = Array.isArray(user.roles) ? user.roles : (user.role ? [user.role] : []);
+                    // Filter out Admin role and only show relevant roles
+                    const filteredRoles = userRoles.filter(role => role !== 'Admin');
+                    const roleBadges = filteredRoles.map(role => {
+                        const color = roleColors[role] || 'secondary';
+                        return `<span class="badge bg-${color} me-1 mb-1">${role}</span>`;
+                    }).join('');
+                    
+                    // Create card
+                    cardsHtml += `
+                        <div class="col-md-3 col-lg-2">
+                            <div class="card h-100 shadow-sm user-work-card">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-2">
+                                        <i class="fas fa-user-circle me-1"></i>${user.name}
+                                    </h6>
+                                    <div class="mb-3">${roleBadges}</div>
+                                    
+                                    <div class="work-stats">
+                                        <div class="stat-item mb-2 clickable-stat" onclick="showUserTickets('${userId}', 'Development')" style="cursor: pointer;">
+                                            <i class="fas fa-code text-primary me-1"></i>
+                                            <span class="stat-label">Development:</span>
+                                            <strong>${assignedCount}</strong>
+                                        </div>
+                                        <div class="stat-item mb-2 clickable-stat" onclick="showUserTickets('${userId}', 'Reviewer')" style="cursor: pointer;">
+                                            <i class="fas fa-code-branch text-info me-1"></i>
+                                            <span class="stat-label">Reviewer:</span>
+                                            <strong>${reviewerCount}</strong>
+                                        </div>
+                                        <div class="stat-item mb-2 clickable-stat" onclick="showUserTickets('${userId}', 'QA')" style="cursor: pointer;">
+                                            <i class="fas fa-check-circle text-success me-1"></i>
+                                            <span class="stat-label">QA:</span>
+                                            <strong>${qaCount}</strong>
+                                        </div>
+                                    </div>
+                                    
+                                    ${assignedCount > 0 ? `
+                                    <div class="status-breakdown mt-3 pt-2 border-top">
+                                        <small class="text-muted d-block mb-1">Status:</small>
+                                        ${statusCounts['Work in progress'] > 0 ? `<small class="d-block"><span class="badge bg-warning text-dark">${statusCounts['Work in progress']}</span> In Progress</small>` : ''}
+                                        ${statusCounts['New'] > 0 ? `<small class="d-block"><span class="badge bg-info">${statusCounts['New']}</span> New</small>` : ''}
+                                        ${statusCounts['Testing'] > 0 ? `<small class="d-block"><span class="badge bg-info">${statusCounts['Testing']}</span> Testing</small>` : ''}
+                                        ${statusCounts['Done'] > 0 ? `<small class="d-block"><span class="badge bg-success">${statusCounts['Done']}</span> Done</small>` : ''}
+                                        ${statusCounts['Other'] > 0 ? `<small class="d-block"><span class="badge bg-secondary">${statusCounts['Other']}</span> Other</small>` : ''}
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = cardsHtml;
+                
+            } catch (error) {
+                console.error('Error loading user work status:', error);
+                console.error('Error stack:', error.stack);
+                container.innerHTML = `
+                    <div class="col-12 text-center py-4">
+                        <p class="text-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load user work status. Error: ${error.message}
+                        </p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Store ticket data for modal access
+        window.userTicketsData = {};
+        
+        // Show user tickets in modal
+        function showUserTickets(userId, category) {
+            const tickets = window.userTicketsData[userId + '_' + category] || [];
+            const userName = window.userTicketsData[userId + '_name'] || 'User';
+            
+            const modal = new bootstrap.Modal(document.getElementById('userTicketsModal'));
+            const title = document.getElementById('userTicketsModalTitle');
+            const list = document.getElementById('userTicketsList');
+            
+            title.textContent = `${userName} - ${category} Tickets (${tickets.length})`;
+            
+            if (tickets.length === 0) {
+                list.innerHTML = '<p class="text-muted text-center">No tickets found.</p>';
+            } else {
+                list.innerHTML = tickets.map(ticket => {
+                    const jiraUrl = `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                    const showCompleteButton = (category === 'Reviewer' || category === 'QA');
+                    
+                    // Determine the actual category for the API call
+                    let apiCategory = category.toLowerCase();
+                    if (category === 'Reviewer' && ticket.reviewerLevel) {
+                        apiCategory = 'reviewer ' + ticket.reviewerLevel; // 'reviewer level 1' or 'reviewer level 2'
+                    }
+                    
+                    return `
+                        <div class="card mb-2" id="ticket-card-${ticket.key}-${category}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1">
+                                            <a href="${jiraUrl}" target="_blank" class="text-decoration-none">
+                                                ${ticket.key}
+                                            </a>
+                                        </h6>
+                                        <p class="mb-2">${ticket.summary || 'No summary'}</p>
+                                        <div>
+                                            <span class="badge bg-info">${ticket.status || 'Unknown'}</span>
+                                            <span class="badge bg-secondary">${ticket.priority || 'Unknown'}</span>
+                                            ${ticket.reviewerLevel ? `<span class="badge bg-primary">Reviewer ${ticket.reviewerLevel === 'level 1' ? 'L1' : 'L2'}</span>` : ''}
+                                        </div>
+                                    </div>
+                                    ${showCompleteButton ? `
+                                        <button class="btn btn-sm btn-success" onclick="completeAssignment('${ticket.key}', '${apiCategory}', '${userName}', '${category}')">
+                                            <i class="fas fa-check me-1"></i>Complete
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            modal.show();
+        }
+        
+        // Helper function to find user ID by name
+        function findUserIdByName(userName) {
+            if (window.usersData) {
+                const user = window.usersData.find(u => u.name === userName);
+                return user ? user.id : null;
+            }
+            return null;
+        }
+        
+        // Complete an assignment (Reviewer or QA)
+        async function completeAssignment(ticketKey, category, userName, displayCategory) {
+            // If displayCategory not provided, use category
+            if (!displayCategory) {
+                displayCategory = category;
+            }
+            
+            try {
+                const response = await fetch('/api/ticket-assignments/complete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ticket_key: ticketKey,
+                        category: category.toLowerCase()
+                    })
+                });
+                
+                if (response.ok) {
+                    // Remove the card from modal using displayCategory
+                    const cardElement = document.getElementById(`ticket-card-${ticketKey}-${displayCategory}`);
+                    if (cardElement) {
+                        cardElement.remove();
+                    }
+                    
+                    // Check if modal is now empty
+                    const list = document.getElementById('userTicketsList');
+                    const remainingCount = list.children.length;
+                    
+                    if (remainingCount === 0) {
+                        list.innerHTML = '<p class="text-muted text-center">No tickets found.</p>';
+                    }
+                    
+                    // Update modal title with new count
+                    const title = document.getElementById('userTicketsModalTitle');
+                    title.textContent = `${userName} - ${category} Tickets (${remainingCount})`;
+                    
+                    // Find and update the specific user card count in the DOM
+                    const userCards = document.querySelectorAll('.user-work-card');
+                    userCards.forEach(card => {
+                        const cardUserName = card.querySelector('.card-title').textContent.trim();
+                        if (cardUserName === userName) {
+                            const stats = card.querySelectorAll('.stat-item strong');
+                            // Check if it's a reviewer category (level 1 or level 2)
+                            if ((category.includes('reviewer') || category === 'Reviewer') && stats[1]) {
+                                const currentCount = parseInt(stats[1].textContent);
+                                stats[1].textContent = Math.max(0, currentCount - 1);
+                            } else if (category === 'qa' && stats[2]) {
+                                const currentCount = parseInt(stats[2].textContent);
+                                stats[2].textContent = Math.max(0, currentCount - 1);
+                            }
+                        }
+                    });
+                    
+                    // Also update the user tickets data to remove the completed ticket
+                    const userId = findUserIdByName(userName);
+                    if (userId) {
+                        const storageKey = userId + '_Reviewer';
+                        if (window.userTicketsData && window.userTicketsData[storageKey]) {
+                            window.userTicketsData[storageKey] = window.userTicketsData[storageKey].filter(t => t.key !== ticketKey);
+                        }
+                    }
+                    
+                    // Show success message
+                    showToast('Success', `${category} task completed for ${ticketKey}`, 'success');
+                    
+                } else {
+                    const error = await response.json();
+                    showToast('Error', error.error || 'Failed to complete assignment', 'danger');
+                }
+            } catch (error) {
+                console.error('Error completing assignment:', error);
+                showToast('Error', 'Failed to complete assignment', 'danger');
+            }
+        }
+        
         // Check JIRA status on page load
         document.addEventListener('DOMContentLoaded', function() {
             checkJiraStatus();
             loadJiraStatusCounts();
             loadCacheStatus();
+            loadUserWorkStatus();
             
             // Update cache status every 30 seconds
             setInterval(loadCacheStatus, 30000);
             setInterval(loadCacheStatus, 30000);
         });
     </script>
+    
+    <!-- User-Based Work Status Section -->
+    <div class="row mt-5 mb-4">
+        <div class="col-12">
+            <h3 class="text-center mb-2">
+                <i class="fas fa-users-cog me-2"></i>User-Based Work Status
+            </h3>
+            <p class="text-muted text-center mb-3">Overview of ticket assignments per team member</p>
+        </div>
+    </div>
+    
+    <div class="row g-3 mb-5" id="userWorkStatusCards">
+        <!-- User status cards will be dynamically loaded here -->
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mt-2">Loading user work status...</p>
+        </div>
+    </div>
+    
+    <!-- User Tickets Modal -->
+    <div class="modal fade" id="userTicketsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userTicketsModalTitle"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="userTicketsList"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Footer -->
     <footer class="bg-light text-center py-3 mt-5">

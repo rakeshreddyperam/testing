@@ -101,6 +101,8 @@
     </style>
 </head>
 <body>
+    {% include 'navbar.html' %}
+    
     <div class="container-fluid py-4 page-shell">
         <div id="loadingOverlay" class="loading-overlay">
             <div class="d-flex align-items-center gap-3 bg-white px-4 py-3 rounded-3 shadow-sm border">
@@ -115,9 +117,6 @@
                 <p class="text-muted mb-0">Executive-ready analytics for GitHub pull requests</p>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-outline-secondary toolbar-btn" href="/">
-                    <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
-                </a>
                 <button class="btn btn-primary toolbar-btn" id="exportPdfBtn"><i class="fas fa-file-pdf me-1"></i>Export as PDF</button>
             </div>
         </div>
@@ -447,6 +446,10 @@
 
         function getWeekKeyAndLabel(dateStr) {
             const d = new Date(dateStr);
+            if (Number.isNaN(d.getTime())) {
+                // Fallback so charts never render empty labels
+                return { key: dateStr || 'n/a', label: dateStr || 'n/a' };
+            }
             const day = d.getDay();
             const mondayOffset = (day + 6) % 7; // 0 for Monday, 6 for Sunday
             const start = new Date(d);
@@ -455,9 +458,11 @@
             end.setDate(start.getDate() + 6);
             const pad = n => String(n).padStart(2, '0');
             const fmt = (dt) => `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`;
+            // Use the ending year so cross-year weeks display a single year (e.g., 2026)
+            const yearLabel = String(end.getFullYear());
             return {
                 key: start.toISOString().slice(0, 10),
-                label: `${fmt(start)}–${fmt(end)}\n${start.getFullYear()}`
+                label: `${fmt(start)}–${fmt(end)}\n${yearLabel}`
             };
         }
 
@@ -634,7 +639,16 @@
                         }
                     },
                     scales: {
-                        x: { title: { display: true, text: 'Week' } },
+                        x: {
+                            title: { display: true, text: 'Week' },
+                            ticks: {
+                                autoSkip: true,
+                                maxRotation: 80,
+                                minRotation: 80,
+                                maxTicksLimit: weeks.length,
+                                callback: (value, index) => (labels[index] || '').replace('\n', ' ')
+                            }
+                        },
                         y: { beginAtZero: true, max: 100, ticks: { callback: v => `${v}%` }, title: { display: true, text: 'Share of PRs (%)' } }
                     }
                 }
