@@ -562,11 +562,15 @@ class JiraService:
         return tickets
     
     def process_uploaded_file(self, file_path, file_type):
-        """Process uploaded JIRA file (CSV only)"""
+        """Process uploaded JIRA file (CSV only) - merges with existing data"""
         try:
             if file_type == 'csv':
-                jira_dict = {}
+                # Start with existing JIRA data to preserve tickets not in new upload
+                merged_dict = dict(self.jira_data) if self.jira_data else {}
+                new_tickets = {}
+                updated_tickets = {}
                 processed_count = 0
+                
                 with open(file_path, 'r', newline='', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     logger.info(f"CSV headers detected: {reader.fieldnames}")
@@ -600,7 +604,7 @@ class JiraService:
                                 # Create JIRA link if not provided
                                 link = row.get('link', f"https://onezelis.atlassian.net/browse/{key}")
                                 
-                                jira_dict[key] = {
+                                ticket_data = {
                                     'key': key,
                                     'status': status,
                                     'summary': summary,
@@ -609,6 +613,23 @@ class JiraService:
                                     'link': link,
                                     'source': 'Uploaded CSV'
                                 }
+                                
+                                # Check if ticket already exists
+                                if key in merged_dict:
+                                    # Track as updated if status or other fields changed
+                                    existing = merged_dict[key]
+                                    if (existing.get('status') != status or 
+                                        existing.get('summary') != summary or
+                                        existing.get('assignee') != assignee or
+                                        existing.get('priority') != priority):
+                                        updated_tickets[key] = ticket_data
+                                        logger.info(f"Updated ticket {key}: status={status}, assignee={assignee}")
+                                else:
+                                    new_tickets[key] = ticket_data
+                                    logger.info(f"New ticket {key}: status={status}")
+                                
+                                # Update in merged dictionary
+                                merged_dict[key] = ticket_data
                                 processed_count += 1
                             else:
                                 logger.warning(f"Row {row_num}: Missing or empty issue key")
@@ -617,7 +638,8 @@ class JiraService:
                             continue
                 
                 logger.info(f"Processed {processed_count} tickets from CSV")
-                return self.save_jira_data(jira_dict)
+                logger.info(f"New tickets: {len(new_tickets)}, Updated tickets: {len(updated_tickets)}, Total tickets: {len(merged_dict)}")
+                return self.save_jira_data(merged_dict)
             else:
                 logger.error(f"Unsupported file type: {file_type}. Only CSV is supported.")
                 return False

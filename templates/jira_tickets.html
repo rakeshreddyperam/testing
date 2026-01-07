@@ -59,9 +59,6 @@
                         <p class="text-muted mb-0">Manage tickets and assignments</p>
                     </div>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-success" onclick="syncPRReviewers()" id="syncBtn">
-                            <i class="fas fa-sync me-2"></i>Sync from PRs
-                        </button>
                         <button class="btn btn-primary" onclick="document.getElementById('fileUploadSection').scrollIntoView({behavior: 'smooth'})">
                             <i class="fas fa-upload me-2"></i>Upload JIRA Data
                         </button>
@@ -130,18 +127,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sync Info Alert -->
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="alert alert-info alert-dismissible fade show" role="alert">
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>Auto-Sync Feature:</strong> Click "Sync from PRs" to automatically assign reviewers from GitHub PRs to JIRA tickets. 
-                    PRs with ticket numbers in titles (e.g., "ABC-123: Fix bug") will be matched and reviewers assigned.
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             </div>
         </div>
@@ -633,73 +618,6 @@
         document.getElementById('filterUser').addEventListener('change', renderTickets);
         document.getElementById('filterReviewer').addEventListener('change', renderTickets);
         document.getElementById('filterQA').addEventListener('change', renderTickets);
-
-        // Sync PR reviewers to JIRA tickets
-        async function syncPRReviewers() {
-            const syncBtn = document.getElementById('syncBtn');
-            const originalHTML = syncBtn.innerHTML;
-            
-            // Check if users exist
-            if (users.length === 0) {
-                alert('⚠️ Please add users with GitHub usernames first!\n\nGo to Users page → Add users → Include their GitHub usernames');
-                return;
-            }
-            
-            // Check if users have GitHub usernames
-            const usersWithGithub = users.filter(u => u.github_username);
-            if (usersWithGithub.length === 0) {
-                alert('⚠️ No users have GitHub usernames!\n\nGo to Users page → Edit users → Add their GitHub usernames');
-                return;
-            }
-            
-            // Check if tickets exist
-            if (tickets.length === 0) {
-                alert('⚠️ Please upload JIRA data first!\n\nScroll down and upload your JIRA CSV file');
-                return;
-            }
-            
-            if (!confirm(`Sync PR reviewers to JIRA tickets?\n\n✓ ${usersWithGithub.length} users with GitHub usernames\n✓ ${tickets.length} JIRA tickets\n\nThis will scan all PRs and assign reviewers automatically.`)) {
-                return;
-            }
-            
-            try {
-                syncBtn.disabled = true;
-                syncBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Syncing...';
-                
-                // Get current enterprise and repo settings - use defaults for now
-                const enterprise = 'zdi';
-                const repo = 'Zelis-Data-Intelligence-ZDI/zdi-data-admin';
-                
-                console.log('Syncing with:', { enterprise, repo });
-                
-                const response = await fetch('/api/sync-pr-reviewers', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enterprise, repo })
-                });
-
-                const result = await response.json();
-                console.log('Sync result:', result);
-
-                if (response.ok) {
-                    if (result.synced_count > 0) {
-                        alert(`✅ Success!\n\n${result.message}\n\nDetails:\n${result.updated_tickets.map(t => `• ${t.ticket} from PR #${t.pr}`).join('\n')}`);
-                    } else {
-                        alert(`ℹ️ No matches found\n\nMake sure:\n✓ PRs have JIRA ticket numbers in titles (e.g., "ABC-123: Fix bug")\n✓ PRs have been reviewed\n✓ Reviewers are added in Users page with correct GitHub usernames`);
-                    }
-                    await loadAssignments();
-                } else {
-                    console.error('Sync error:', result);
-                    alert(`❌ Error: ${result.error || 'Failed to sync PR reviewers'}\n\nCheck browser console for details.`);
-                }
-            } catch (error) {
-                console.error('Error syncing PR reviewers:', error);
-                alert(`❌ Network error: ${error.message}\n\nPlease check:\n✓ Server is running\n✓ Network connection\n✓ Browser console for details`);
-            } finally {
-                syncBtn.disabled = false;
-                syncBtn.innerHTML = originalHTML;
-            }
-        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
