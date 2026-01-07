@@ -1784,6 +1784,15 @@ def clear_jira_data():
         jira_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'jira_data.json')
         if os.path.exists(jira_file_path):
             os.remove(jira_file_path)
+        
+        # Also clear ticket assignments since tickets no longer exist
+        assignments_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'ticket_assignments.json')
+        if os.path.exists(assignments_file_path):
+            with open(assignments_file_path, 'w') as f:
+                json.dump({}, f)
+            logger.info(f"Cleared ticket assignments at: {assignments_file_path}")
+        
+        logger.info("JIRA data and ticket assignments cleared successfully")
         return jsonify({'message': 'JIRA data cleared successfully'})
     except Exception as e:
         logger.error(f"Error clearing JIRA data: {e}")
@@ -1808,6 +1817,376 @@ def cache_info():
     except Exception as e:
         logger.error(f"Error getting cache info: {e}")
         return jsonify({'error': 'Failed to get cache info'}), 500
+
+# ============= USER MANAGEMENT ROUTES =============
+
+@app.route('/users')
+def users_page():
+    """Users management page"""
+    logger.info("Users page accessed")
+    return render_template('users.html')
+
+@app.route('/jira-tickets')
+def jira_tickets_page():
+    """JIRA tickets management page"""
+    logger.info("JIRA tickets page accessed")
+    return render_template('jira_tickets.html')
+
+# User data storage
+USERS_FILE = os.path.join(app.config['UPLOAD_FOLDER'], 'users.json')
+ASSIGNMENTS_FILE = os.path.join(app.config['UPLOAD_FOLDER'], 'ticket_assignments.json')
+
+def load_users():
+    """Load users from JSON file"""
+    try:
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, 'r') as f:
+                return json.load(f)
+        return []
+    except Exception as e:
+        logger.error(f"Error loading users: {e}")
+        return []
+
+def save_users(users):
+    """Save users to JSON file"""
+    try:
+        with open(USERS_FILE, 'w') as f:
+            json.dump(users, f, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving users: {e}")
+        return False
+
+def load_assignments():
+    """Load ticket assignments from JSON file"""
+    try:
+        if os.path.exists(ASSIGNMENTS_FILE):
+            with open(ASSIGNMENTS_FILE, 'r') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        logger.error(f"Error loading assignments: {e}")
+        return {}
+
+def save_assignments(assignments):
+    """Save ticket assignments to JSON file"""
+    try:
+        with open(ASSIGNMENTS_FILE, 'w') as f:
+            json.dump(assignments, f, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving assignments: {e}")
+        return False
+
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    """Get all users"""
+    try:
+        users = load_users()
+        return jsonify(users)
+    except Exception as e:
+        logger.error(f"Error getting users: {e}")
+        return jsonify({'error': 'Failed to get users'}), 500
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    """Create a new user"""
+    try:
+        data = request.json
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip()
+        roles = data.get('roles', [])  # Accept roles array
+        github_username = data.get('github_username', '').strip()
+        
+        # Also accept legacy 'role' field for backwards compatibility
+        if not roles and data.get('role'):
+            roles = [data.get('role').strip()]
+
+        if not name or not email or not roles:
+            return jsonify({'error': 'Name, email, and at least one role are required'}), 400
+
+        users = load_users()
+        
+        # Generate unique ID
+        import uuid
+        user_id = str(uuid.uuid4())
+
+        new_user = {
+            'id': user_id,
+            'name': name,
+            'email': email,
+            'roles': roles,  # Store as array
+            'github_username': github_username,
+            'created_at': datetime.now().isoformat()
+        }
+
+        users.append(new_user)
+        save_users(users)
+
+        logger.info(f"Created new user: {name} ({', '.join(roles)})")
+        return jsonify(new_user), 201
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        return jsonify({'error': 'Failed to create user'}), 500
+
+@app.route('/api/users/<user_id>', methods=['PUT'])
+def update_user(user_id):
+    """Update an existing user"""
+    try:
+        data = request.json
+        users = load_users()
+        
+        user = next((u for u in users if u['id'] == user_id), None)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        user['name'] = data.get('name', user['name']).strip()
+        user['email'] = data.get('email', user['email']).strip()
+        user['github_username'] = data.get('github_username', user.get('github_username', '')).strip()
+        
+        # Handle roles array
+        if 'roles' in data:
+            user['roles'] = data['roles']
+        elif 'role' in data:  # Legacy support
+            user['roles'] = [data['role'].strip()]
+        
+        user['updated_at'] = datetime.now().isoformat()
+
+        save_users(users)
+
+        logger.info(f"Updated user: {user['name']} ({', '.join(user.get('roles', []))})")
+        return jsonify(user)
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        return jsonify({'error': 'Failed to update user'}), 500
+
+@app.route('/api/users/<user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    """Delete a user"""
+    try:
+        users = load_users()
+        user = next((u for u in users if u['id'] == user_id), None)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        users = [u for u in users if u['id'] != user_id]
+        save_users(users)
+
+        logger.info(f"Deleted user: {user['name']}")
+        return jsonify({'message': 'User deleted successfully'})
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        return jsonify({'error': 'Failed to delete user'}), 500
+
+# ============= TICKET ASSIGNMENT ROUTES =============
+
+@app.route('/api/ticket-assignments', methods=['GET'])
+def get_ticket_assignments():
+    """Get all ticket assignments"""
+    try:
+        assignments = load_assignments()
+        return jsonify(assignments)
+    except Exception as e:
+        logger.error(f"Error getting assignments: {e}")
+        return jsonify({'error': 'Failed to get assignments'}), 500
+
+@app.route('/api/ticket-assignments', methods=['POST'])
+def assign_ticket():
+    """Assign reviewer/QA to a ticket"""
+    try:
+        data = request.json
+        ticket_key = data.get('ticket_key', '').strip()
+        reviewer_l1 = (data.get('reviewer_l1') or '').strip()
+        reviewer_l2 = (data.get('reviewer_l2') or '').strip()
+        qa = (data.get('qa') or '').strip()
+
+        if not ticket_key:
+            return jsonify({'error': 'Ticket key is required'}), 400
+
+        assignments = load_assignments()
+        
+        # Preserve existing completion status if updating
+        existing = assignments.get(ticket_key, {})
+        
+        assignments[ticket_key] = {
+            'reviewer_l1': reviewer_l1 if reviewer_l1 else None,
+            'reviewer_l2': reviewer_l2 if reviewer_l2 else None,
+            'qa': qa if qa else None,
+            'reviewer_l1_completed': existing.get('reviewer_l1_completed', False),
+            'reviewer_l2_completed': existing.get('reviewer_l2_completed', False),
+            'qa_completed': existing.get('qa_completed', False),
+            'assigned_at': datetime.now().isoformat()
+        }
+
+        save_assignments(assignments)
+
+        logger.info(f"Assigned ticket {ticket_key}: Reviewer L1={reviewer_l1}, Reviewer L2={reviewer_l2}, QA={qa}")
+        return jsonify(assignments[ticket_key]), 201
+    except Exception as e:
+        logger.error(f"Error assigning ticket: {e}")
+        return jsonify({'error': f'Failed to assign ticket: {str(e)}'}), 500
+
+@app.route('/api/ticket-assignments/complete', methods=['POST'])
+def complete_assignment():
+    """Mark a reviewer or QA assignment as complete"""
+    try:
+        data = request.json
+        ticket_key = data.get('ticket_key', '').strip()
+        category = data.get('category', '').strip().lower()  # 'reviewer' or 'qa'
+
+        if not ticket_key or not category:
+            return jsonify({'error': 'Ticket key and category are required'}), 400
+        
+        if category not in ['reviewer', 'reviewer level 1', 'reviewer level 2', 'qa']:
+            return jsonify({'error': 'Category must be reviewer, reviewer level 1, reviewer level 2, or qa'}), 400
+
+        assignments = load_assignments()
+        
+        if ticket_key not in assignments:
+            return jsonify({'error': 'Assignment not found'}), 404
+        
+        # Mark as completed
+        if category == 'reviewer' or category == 'reviewer level 1':
+            assignments[ticket_key]['reviewer_l1_completed'] = True
+            assignments[ticket_key]['reviewer_l1_completed_at'] = datetime.now().isoformat()
+        elif category == 'reviewer level 2':
+            assignments[ticket_key]['reviewer_l2_completed'] = True
+            assignments[ticket_key]['reviewer_l2_completed_at'] = datetime.now().isoformat()
+        else:  # qa
+            assignments[ticket_key]['qa_completed'] = True
+            assignments[ticket_key]['qa_completed_at'] = datetime.now().isoformat()
+        
+        save_assignments(assignments)
+        logger.info(f"Marked {category} as completed for ticket {ticket_key}")
+        return jsonify({'message': 'Assignment marked as complete'})
+    except Exception as e:
+        logger.error(f"Error completing assignment: {e}")
+        return jsonify({'error': 'Failed to complete assignment'}), 500
+
+@app.route('/api/ticket-assignments/<ticket_key>', methods=['DELETE'])
+def delete_assignment(ticket_key):
+    """Remove assignment from a ticket"""
+    try:
+        assignments = load_assignments()
+        
+        if ticket_key not in assignments:
+            return jsonify({'error': 'Assignment not found'}), 404
+
+        del assignments[ticket_key]
+        save_assignments(assignments)
+
+        logger.info(f"Removed assignment for ticket: {ticket_key}")
+        return jsonify({'message': 'Assignment removed successfully'})
+    except Exception as e:
+        logger.error(f"Error deleting assignment: {e}")
+        return jsonify({'error': 'Failed to delete assignment'}), 500
+
+@app.route('/api/sync-pr-reviewers', methods=['POST'])
+def sync_pr_reviewers():
+    """Automatically sync PR reviewers to JIRA ticket assignments"""
+    try:
+        data = request.json
+        repo = data.get('repo', GITHUB_REPO)
+        enterprise = data.get('enterprise', 'zdi')
+        
+        # Get appropriate token
+        token = get_enterprise_token(enterprise)
+        current_service = GitHubService(token, repo)
+        
+        # Get all PRs (open and closed)
+        logger.info(f"Fetching PRs from {repo} to sync reviewers...")
+        prs = current_service.get_pull_requests(state='all')
+        
+        # Get current users and assignments
+        users = load_users()
+        assignments = load_assignments()
+        
+        # Create mapping of GitHub username to user ID
+        github_to_user_id = {}
+        for user in users:
+            if user.get('github_username'):
+                github_to_user_id[user['github_username'].lower()] = user['id']
+        
+        synced_count = 0
+        updated_tickets = []
+        
+        for pr in prs:
+            # Extract JIRA ticket keys from PR title
+            pr_title = pr.get('title', '')
+            jira_keys = jira_service.extract_jira_keys(pr_title)
+            
+            if not jira_keys:
+                continue
+            
+            # Get PR reviewers
+            pr_number = pr['number']
+            try:
+                reviews_url = f'{BASE_URL}/repos/{repo}/pulls/{pr_number}/reviews'
+                headers = {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Authorization': f'token {token}',
+                    'User-Agent': 'GitHub-PR-Dashboard'
+                }
+                reviews_response = requests.get(reviews_url, headers=headers, timeout=10)
+                
+                if reviews_response.status_code == 200:
+                    reviews = reviews_response.json()
+                    
+                    # Get unique reviewers (latest review per user)
+                    reviewer_logins = set()
+                    for review in reviews:
+                        reviewer_login = review.get('user', {}).get('login', '').lower()
+                        if reviewer_login:
+                            reviewer_logins.add(reviewer_login)
+                    
+                    # Map to our users
+                    reviewer_ids = []
+                    for login in reviewer_logins:
+                        if login in github_to_user_id:
+                            reviewer_ids.append(github_to_user_id[login])
+                    
+                    # Assign reviewers to JIRA tickets
+                    for jira_key in jira_keys:
+                        if reviewer_ids:
+                            # Take the first reviewer (or we could assign all)
+                            reviewer_id = reviewer_ids[0]
+                            
+                            # Update or create assignment
+                            if jira_key not in assignments:
+                                assignments[jira_key] = {}
+                            
+                            assignments[jira_key]['reviewer'] = reviewer_id
+                            assignments[jira_key]['synced_from_pr'] = pr_number
+                            assignments[jira_key]['synced_at'] = datetime.now().isoformat()
+                            
+                            synced_count += 1
+                            updated_tickets.append({
+                                'ticket': jira_key,
+                                'pr': pr_number,
+                                'reviewer': reviewer_id
+                            })
+                            
+                            logger.info(f"Synced PR #{pr_number} reviewer to {jira_key}")
+            
+            except Exception as e:
+                logger.error(f"Error fetching reviews for PR #{pr_number}: {e}")
+                continue
+        
+        # Save updated assignments
+        save_assignments(assignments)
+        
+        logger.info(f"Synced {synced_count} reviewer assignments from PRs")
+        return jsonify({
+            'success': True,
+            'synced_count': synced_count,
+            'updated_tickets': updated_tickets,
+            'message': f'Successfully synced {synced_count} reviewer assignments from PRs'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error syncing PR reviewers: {e}")
+        return jsonify({'error': f'Failed to sync PR reviewers: {str(e)}'}), 500
 
 # Periodic cache cleanup function
 def cleanup_cache():

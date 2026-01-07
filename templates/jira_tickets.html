@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JIRA Tickets - GitHub PR Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #f5f7fa;
+        }
+        .ticket-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid #ffc107;
+            margin-bottom: 15px;
+        }
+        .ticket-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .status-badge {
+            padding: 0.375rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .status-todo { background-color: #e3f2fd; color: #1565c0; }
+        .status-progress { background-color: #fff3e0; color: #e65100; }
+        .status-testing { background-color: #f3e5f5; color: #6a1b9a; }
+        .status-done { background-color: #e8f5e9; color: #2e7d32; }
+        .priority-critical { border-left-color: #dc3545; }
+        .priority-high { border-left-color: #fd7e14; }
+        .priority-medium { border-left-color: #ffc107; }
+        .priority-low { border-left-color: #28a745; }
+        .assignment-section {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .stats-card {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+    </style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+    
+    <div class="container-fluid mt-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h2><i class="fas fa-ticket-alt me-2"></i>JIRA Sprint Tickets</h2>
+                        <p class="text-muted mb-0">Manage tickets and assignments</p>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-success" onclick="syncPRReviewers()" id="syncBtn">
+                            <i class="fas fa-sync me-2"></i>Sync from PRs
+                        </button>
+                        <button class="btn btn-primary" onclick="document.getElementById('fileUploadSection').scrollIntoView({behavior: 'smooth'})">
+                            <i class="fas fa-upload me-2"></i>Upload JIRA Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0 bg-primary text-white rounded p-3">
+                                <i class="fas fa-clipboard-list fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="text-muted mb-1">Total Tickets</h6>
+                                <h3 class="mb-0" id="totalCount">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0 bg-warning text-white rounded p-3">
+                                <i class="fas fa-spinner fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="text-muted mb-1">In Progress</h6>
+                                <h3 class="mb-0" id="inProgressCount">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0 bg-purple text-white rounded p-3" style="background-color: #6a1b9a;">
+                                <i class="fas fa-vial fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="text-muted mb-1">Testing</h6>
+                                <h3 class="mb-0" id="testingCount">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0 bg-success text-white rounded p-3">
+                                <i class="fas fa-check-circle fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="text-muted mb-1">Done</h6>
+                                <h3 class="mb-0" id="doneCount">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync Info Alert -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="alert alert-info alert-dismissible fade show" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Auto-Sync Feature:</strong> Click "Sync from PRs" to automatically assign reviewers from GitHub PRs to JIRA tickets. 
+                    PRs with ticket numbers in titles (e.g., "ABC-123: Fix bug") will be matched and reviewers assigned.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <input type="text" class="form-control" id="searchTickets" placeholder="Search tickets...">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="filterStatus">
+                    <option value="">All Status</option>
+                    <option value="todo">To Do</option>
+                    <option value="progress">In Progress</option>
+                    <option value="testing">Testing</option>
+                    <option value="done">Done</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="filterUser">
+                    <option value="">All Assignees</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="filterReviewer">
+                    <option value="">All Reviewers</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="filterQA">
+                    <option value="">All QA</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Tickets List -->
+        <div class="row">
+            <div class="col-12">
+                <div id="ticketsList"></div>
+                <div id="emptyState" class="text-center py-5" style="display: none;">
+                    <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+                    <h4>No Tickets Found</h4>
+                    <p class="text-muted">Upload JIRA data to see tickets here</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div id="fileUploadSection" class="row mt-5">
+            <div class="col-md-8 offset-md-2">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload JIRA Data</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm">
+                            <div class="mb-3">
+                                <label for="jiraFile" class="form-label">Select CSV File</label>
+                                <input type="file" class="form-control" id="jiraFile" accept=".csv" required>
+                                <div class="form-text">Upload JIRA export CSV file</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload me-2"></i>Upload
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assignment Modal -->
+    <div class="modal fade" id="assignmentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Assign Team Members</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="assignTicketKey">
+                    <div class="mb-3">
+                        <label class="form-label">Ticket</label>
+                        <input type="text" class="form-control" id="assignTicketDisplay" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignReviewerL1" class="form-label">Reviewer Level 1</label>
+                        <select class="form-select" id="assignReviewerL1">
+                            <option value="">Select Reviewer Level 1</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignReviewerL2" class="form-label">Reviewer Level 2</label>
+                        <select class="form-select" id="assignReviewerL2">
+                            <option value="">Select Reviewer Level 2</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignQA" class="form-label">QA Analyst</label>
+                        <select class="form-select" id="assignQA">
+                            <option value="">Select QA</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveAssignment()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let tickets = [];
+        let users = [];
+        let assignments = {};
+        let assignmentModalInstance;
+
+        async function loadTickets() {
+            try {
+                const response = await fetch('/api/jira/tickets');
+                const data = await response.json();
+                tickets = Object.values(data.tickets || {});
+                updateStats();
+                renderTickets();
+                // Populate filters after tickets are loaded
+                if (users.length > 0) {
+                    populateUserFilters();
+                }
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch('/api/users');
+                users = await response.json();
+                // Populate filters after users are loaded (if tickets already loaded)
+                if (tickets.length > 0) {
+                    populateUserFilters();
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        async function loadAssignments() {
+            try {
+                const response = await fetch('/api/ticket-assignments');
+                assignments = await response.json();
+                renderTickets();
+            } catch (error) {
+                console.error('Error loading assignments:', error);
+            }
+        }
+
+        function populateUserFilters() {
+            // Handle both single role (legacy) and multiple roles array
+            const hasRole = (user, roleName) => {
+                if (Array.isArray(user.roles)) {
+                    return user.roles.includes(roleName);
+                }
+                return user.role === roleName;
+            };
+            
+            const reviewersL1 = users.filter(u => 
+                hasRole(u, 'Reviewer Level 1') || 
+                hasRole(u, 'Reviewer')
+            );
+            const reviewersL2 = users.filter(u => 
+                hasRole(u, 'Reviewer Level 2') || 
+                hasRole(u, 'Reviewer')
+            );
+            const qas = users.filter(u => hasRole(u, 'QA') || hasRole(u, 'Admin'));
+
+            // Get unique assignee names from tickets ONLY
+            const ticketAssignees = [...new Set(tickets.map(t => t.assignee).filter(a => a && a !== 'Unassigned'))].sort();
+
+            // Populate assignee filter dropdown with ONLY ticket assignees
+            document.getElementById('filterUser').innerHTML = '<option value="">All Assignees</option>' +
+                ticketAssignees.map(name => `<option value="${name}">${name}</option>`).join('');
+            
+            document.getElementById('filterReviewer').innerHTML = '<option value="">All Reviewers</option>' +
+                [...reviewersL1, ...reviewersL2].filter((u, i, a) => a.findIndex(x => x.id === u.id) === i)
+                    .map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+            
+            document.getElementById('filterQA').innerHTML = '<option value="">All QA</option>' +
+                qas.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+
+            // Populate assignment modal dropdowns
+            document.getElementById('assignReviewerL1').innerHTML = '<option value="">Select Reviewer Level 1</option>' +
+                reviewersL1.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+            
+            document.getElementById('assignReviewerL2').innerHTML = '<option value="">Select Reviewer Level 2</option>' +
+                reviewersL2.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+            
+            document.getElementById('assignQA').innerHTML = '<option value="">Select QA</option>' +
+                qas.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+        }
+
+        function updateStats() {
+            document.getElementById('totalCount').textContent = tickets.length;
+            
+            const statusCounts = {
+                progress: 0,
+                testing: 0,
+                done: 0
+            };
+
+            tickets.forEach(ticket => {
+                const status = ticket.status.toLowerCase();
+                if (status.includes('progress') || status.includes('development')) {
+                    statusCounts.progress++;
+                } else if (status.includes('testing') || status.includes('qat')) {
+                    statusCounts.testing++;
+                } else if (status.includes('done') || status.includes('closed') || status.includes('resolved')) {
+                    statusCounts.done++;
+                }
+            });
+
+            document.getElementById('inProgressCount').textContent = statusCounts.progress;
+            document.getElementById('testingCount').textContent = statusCounts.testing;
+            document.getElementById('doneCount').textContent = statusCounts.done;
+        }
+
+        function getStatusClass(status) {
+            const s = status.toLowerCase();
+            if (s.includes('done') || s.includes('closed') || s.includes('resolved')) return 'status-done';
+            if (s.includes('progress') || s.includes('development')) return 'status-progress';
+            if (s.includes('testing') || s.includes('qat')) return 'status-testing';
+            return 'status-todo';
+        }
+
+        function getPriorityClass(priority) {
+            const p = (priority || '').toLowerCase();
+            if (p.includes('critical') || p.includes('highest')) return 'priority-critical';
+            if (p.includes('high')) return 'priority-high';
+            if (p.includes('low') || p.includes('lowest')) return 'priority-low';
+            return 'priority-medium';
+        }
+
+        function getUserName(nameOrId) {
+            // Since we're now storing by name, return the name directly if it exists
+            // Otherwise try to find by ID for backwards compatibility
+            if (!nameOrId) return 'Unassigned';
+            
+            // If it's already a name (not a number), return it
+            if (nameOrId && typeof nameOrId === 'string' && nameOrId !== 'Unassigned') {
+                return nameOrId;
+            }
+            
+            // Otherwise try to find user by ID (backwards compatibility)
+            const user = users.find(u => u.id === nameOrId);
+            return user ? user.name : 'Unassigned';
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return '';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            } catch (e) {
+                return timestamp;
+            }
+        }
+
+        function renderTickets() {
+            const ticketsList = document.getElementById('ticketsList');
+            const emptyState = document.getElementById('emptyState');
+            const searchTerm = document.getElementById('searchTickets').value.toLowerCase();
+            const statusFilter = document.getElementById('filterStatus').value;
+            const userFilter = document.getElementById('filterUser').value;
+            const reviewerFilter = document.getElementById('filterReviewer').value;
+            const qaFilter = document.getElementById('filterQA').value;
+
+            let filtered = tickets.filter(ticket => {
+                const matchesSearch = searchTerm === '' ||
+                    ticket.key.toLowerCase().includes(searchTerm) ||
+                    ticket.summary.toLowerCase().includes(searchTerm);
+                
+                const matchesStatus = statusFilter === '' || 
+                    getStatusClass(ticket.status).includes(statusFilter);
+                
+                const assignment = assignments[ticket.key] || {};
+                // Now userFilter contains the name directly, not user ID
+                const matchesUser = userFilter === '' || ticket.assignee === userFilter;
+                // Compare by name now (convert ID to name) - check both reviewer levels
+                const reviewerName = users.find(u => u.id === reviewerFilter)?.name || '';
+                const matchesReviewer = reviewerFilter === '' || 
+                    assignment.reviewer_l1 === reviewerName ||
+                    assignment.reviewer_l2 === reviewerName;
+                const matchesQA = qaFilter === '' || 
+                    assignment.qa === (users.find(u => u.id === qaFilter)?.name || '');
+
+                return matchesSearch && matchesStatus && matchesUser && matchesReviewer && matchesQA;
+            });
+
+            if (filtered.length === 0) {
+                ticketsList.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            ticketsList.innerHTML = filtered.map(ticket => {
+                const assignment = assignments[ticket.key] || {};
+                
+                // Handle reviewer level 1
+                const reviewerL1 = getUserName(assignment.reviewer_l1);
+                const reviewerL1Completed = assignment.reviewer_l1_completed;
+                const reviewerL1CompletedAt = assignment.reviewer_l1_completed_at;
+                
+                // Handle reviewer level 2  
+                const reviewerL2 = getUserName(assignment.reviewer_l2);
+                const reviewerL2Completed = assignment.reviewer_l2_completed;
+                const reviewerL2CompletedAt = assignment.reviewer_l2_completed_at;
+                
+                const qa = getUserName(assignment.qa);
+
+                const jiraUrl = `https://onezelis.atlassian.net/browse/${ticket.key}`;
+                
+                return `
+                    <div class="card ticket-card ${getPriorityClass(ticket.priority)}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="flex-grow-1">
+                                    <h5 class="mb-1">
+                                        <a href="${jiraUrl}" target="_blank" class="text-decoration-none">
+                                            ${ticket.key}
+                                        </a>
+                                    </h5>
+                                    <p class="text-muted mb-2">${ticket.summary}</p>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="openAssignmentModal('${ticket.key}', '${ticket.summary.replace(/'/g, "\\'")}')">
+                                    <i class="fas fa-user-plus"></i> Assign
+                                </button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <span class="status-badge ${getStatusClass(ticket.status)}">${ticket.status}</span>
+                                <span class="badge bg-secondary">${ticket.priority || 'Medium'}</span>
+                                <span class="badge bg-info">
+                                    <i class="fas fa-user me-1"></i>${ticket.assignee}
+                                </span>
+                            </div>
+                            <div class="assignment-section">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <small class="text-muted">
+                                            <i class="fas fa-eye me-1"></i>Reviewer L1: 
+                                            <strong>${reviewerL1}</strong>
+                                            ${reviewerL1Completed ? '<span class="badge bg-success ms-1"><i class="fas fa-check"></i> Completed</span>' : ''}
+                                        </small>
+                                        ${reviewerL1Completed && reviewerL1CompletedAt ? `<small class="d-block text-muted ms-4" style="font-size: 0.7rem;">${formatTimestamp(reviewerL1CompletedAt)}</small>` : ''}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">
+                                            <i class="fas fa-eye me-1"></i>Reviewer L2: 
+                                            <strong>${reviewerL2}</strong>
+                                            ${reviewerL2Completed ? '<span class="badge bg-success ms-1"><i class="fas fa-check"></i> Completed</span>' : ''}
+                                        </small>
+                                        ${reviewerL2Completed && reviewerL2CompletedAt ? `<small class="d-block text-muted ms-4" style="font-size: 0.7rem;">${formatTimestamp(reviewerL2CompletedAt)}</small>` : ''}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">
+                                            <i class="fas fa-check-circle me-1"></i>QA: 
+                                            <strong>${qa}</strong>
+                                            ${assignment.qa_completed ? '<span class="badge bg-success ms-1"><i class="fas fa-check"></i> Completed</span>' : ''}
+                                        </small>
+                                        ${assignment.qa_completed && assignment.qa_completed_at ? `<small class="d-block text-muted ms-4" style="font-size: 0.7rem;">${formatTimestamp(assignment.qa_completed_at)}</small>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openAssignmentModal(key, summary) {
+            document.getElementById('assignTicketKey').value = key;
+            document.getElementById('assignTicketDisplay').value = `${key} - ${summary}`;
+            
+            const assignment = assignments[key] || {};
+            
+            // Find user IDs from names for pre-filling
+            const reviewerL1User = assignment.reviewer_l1 ? users.find(u => u.name === assignment.reviewer_l1) : null;
+            const reviewerL2User = assignment.reviewer_l2 ? users.find(u => u.name === assignment.reviewer_l2) : null;
+            const qaUser = assignment.qa ? users.find(u => u.name === assignment.qa) : null;
+            
+            document.getElementById('assignReviewerL1').value = reviewerL1User?.id || '';
+            document.getElementById('assignReviewerL2').value = reviewerL2User?.id || '';
+            document.getElementById('assignQA').value = qaUser?.id || '';
+
+            assignmentModalInstance.show();
+        }
+
+        async function saveAssignment() {
+            const ticketKey = document.getElementById('assignTicketKey').value;
+            const reviewerL1Id = document.getElementById('assignReviewerL1').value;
+            const reviewerL2Id = document.getElementById('assignReviewerL2').value;
+            const qaId = document.getElementById('assignQA').value;
+
+            console.log('Save Assignment Called:', { ticketKey, reviewerL1Id, reviewerL2Id, qaId });
+
+            if (!reviewerL1Id && !reviewerL2Id && !qaId) {
+                alert('Please select at least one team member');
+                return;
+            }
+
+            try {
+                // Convert user IDs to names for storage
+                const reviewerL1Name = reviewerL1Id ? users.find(u => u.id === reviewerL1Id)?.name : null;
+                const reviewerL2Name = reviewerL2Id ? users.find(u => u.id === reviewerL2Id)?.name : null;
+                const qaName = qaId ? users.find(u => u.id === qaId)?.name : null;
+
+                console.log('Converted names:', { reviewerL1Name, reviewerL2Name, qaName });
+
+                const response = await fetch('/api/ticket-assignments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ticket_key: ticketKey,
+                        reviewer_l1: reviewerL1Name,
+                        reviewer_l2: reviewerL2Name,
+                        qa: qaName
+                    })
+                });
+
+                console.log('Response status:', response.status);
+
+                if (response.ok) {
+                    console.log('Assignment saved successfully');
+                    assignmentModalInstance.hide();
+                    await loadAssignments();
+                    renderTickets();
+                } else {
+                    const errorData = await response.json();
+                    console.error('Error response:', errorData);
+                    alert('Error saving assignment: ' + (errorData.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error saving assignment:', error);
+                alert('Error saving assignment');
+            }
+        }
+
+        // File upload
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('jiraFile');
+            const file = fileInput.files[0];
+
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/jira/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    alert('File uploaded successfully!');
+                    fileInput.value = '';
+                    await loadTickets();
+                } else {
+                    alert('Error uploading file');
+                }
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                alert('Error uploading file');
+            }
+        });
+
+        // Search and filters
+        document.getElementById('searchTickets').addEventListener('input', renderTickets);
+        document.getElementById('filterStatus').addEventListener('change', renderTickets);
+        document.getElementById('filterUser').addEventListener('change', renderTickets);
+        document.getElementById('filterReviewer').addEventListener('change', renderTickets);
+        document.getElementById('filterQA').addEventListener('change', renderTickets);
+
+        // Sync PR reviewers to JIRA tickets
+        async function syncPRReviewers() {
+            const syncBtn = document.getElementById('syncBtn');
+            const originalHTML = syncBtn.innerHTML;
+            
+            // Check if users exist
+            if (users.length === 0) {
+                alert('⚠️ Please add users with GitHub usernames first!\n\nGo to Users page → Add users → Include their GitHub usernames');
+                return;
+            }
+            
+            // Check if users have GitHub usernames
+            const usersWithGithub = users.filter(u => u.github_username);
+            if (usersWithGithub.length === 0) {
+                alert('⚠️ No users have GitHub usernames!\n\nGo to Users page → Edit users → Add their GitHub usernames');
+                return;
+            }
+            
+            // Check if tickets exist
+            if (tickets.length === 0) {
+                alert('⚠️ Please upload JIRA data first!\n\nScroll down and upload your JIRA CSV file');
+                return;
+            }
+            
+            if (!confirm(`Sync PR reviewers to JIRA tickets?\n\n✓ ${usersWithGithub.length} users with GitHub usernames\n✓ ${tickets.length} JIRA tickets\n\nThis will scan all PRs and assign reviewers automatically.`)) {
+                return;
+            }
+            
+            try {
+                syncBtn.disabled = true;
+                syncBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Syncing...';
+                
+                // Get current enterprise and repo settings - use defaults for now
+                const enterprise = 'zdi';
+                const repo = 'Zelis-Data-Intelligence-ZDI/zdi-data-admin';
+                
+                console.log('Syncing with:', { enterprise, repo });
+                
+                const response = await fetch('/api/sync-pr-reviewers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enterprise, repo })
+                });
+
+                const result = await response.json();
+                console.log('Sync result:', result);
+
+                if (response.ok) {
+                    if (result.synced_count > 0) {
+                        alert(`✅ Success!\n\n${result.message}\n\nDetails:\n${result.updated_tickets.map(t => `• ${t.ticket} from PR #${t.pr}`).join('\n')}`);
+                    } else {
+                        alert(`ℹ️ No matches found\n\nMake sure:\n✓ PRs have JIRA ticket numbers in titles (e.g., "ABC-123: Fix bug")\n✓ PRs have been reviewed\n✓ Reviewers are added in Users page with correct GitHub usernames`);
+                    }
+                    await loadAssignments();
+                } else {
+                    console.error('Sync error:', result);
+                    alert(`❌ Error: ${result.error || 'Failed to sync PR reviewers'}\n\nCheck browser console for details.`);
+                }
+            } catch (error) {
+                console.error('Error syncing PR reviewers:', error);
+                alert(`❌ Network error: ${error.message}\n\nPlease check:\n✓ Server is running\n✓ Network connection\n✓ Browser console for details`);
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = originalHTML;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            assignmentModalInstance = new bootstrap.Modal(document.getElementById('assignmentModal'));
+            await loadUsers();
+            await loadTickets();
+            await loadAssignments();
+        });
+    </script>
+</body>
+</html>
